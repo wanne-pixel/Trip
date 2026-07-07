@@ -23,7 +23,7 @@
 ## 🛠️ 시스템 정보 및 DB 스키마 정보
 - Node.js: v24.16.0
 - DB: Supabase (연결 대기 중)
-- Git Branch: `master` (최신 커밋: `2eabfd6`)
+- Git Branch: `master` (최신 커밋: `a08c041`)
 
 ---
 
