@@ -553,17 +553,48 @@ function setupPhotoUploadZone() {
 async function handleFilesSelected(files) {
   if (!files || files.length === 0) return;
 
-  // 파일 크기 검사 (Rule 2 에러 핸들링)
-  const oversized = files.filter(f => f.size > MAX_FILE_SIZE_MB * 1024 * 1024);
-  if (oversized.length > 0) {
-    showToast(`❌ ${oversized.map(f => f.name).join(', ')} — 20MB 초과 파일은 업로드할 수 없습니다.`, true);
+  // 파일 개수 제한 (한 번에 최대 50장)
+  if (files.length > 50) {
+    showToast(`❌ 한 번에 최대 50장까지만 업로드할 수 있습니다.`, true);
     return;
   }
 
-  showLoadingOverlay(`AI가 ${files.length}장의 사진을 분석하여\n여행의 조각들을 맞추고 있습니다...`);
+  showLoadingOverlay(`선택하신 ${files.length}장의 사진을 압축하고 있습니다...\n(모바일 데이터 절약 및 속도 향상)`);
+
+  const compressedFiles = [];
+  try {
+    for (let i = 0; i < files.length; i++) {
+      const file = files[i];
+      // 압축 옵션 설정 (EXIF 보존 필수)
+      const options = {
+        maxSizeMB: 1, // 최대 1MB로 압축
+        maxWidthOrHeight: 1920, // 최대 해상도 FHD급
+        useWebWorker: true,
+        preserveExif: true, // EXIF 메타데이터 보존 (매우 중요)
+        fileType: 'image/jpeg' // HEIC 등도 JPEG로 변환하여 호환성 확보
+      };
+      
+      const compressedBlob = await imageCompression(file, options);
+      
+      // Blob을 다시 File 객체로 변환 (기존 파일명 유지)
+      const compressedFile = new File([compressedBlob], file.name, {
+        type: compressedBlob.type || 'image/jpeg',
+        lastModified: file.lastModified
+      });
+      
+      compressedFiles.push(compressedFile);
+    }
+  } catch (err) {
+    console.error('[이미지 압축 실패]', err);
+    hideLoadingOverlay();
+    showToast(`❌ 사진 압축 중 오류가 발생했습니다.`, true);
+    return;
+  }
+
+  showLoadingOverlay(`압축 완료! AI가 ${compressedFiles.length}장의 사진을 분석하여\n여행의 조각들을 맞추고 있습니다...`);
 
   try {
-    const result = await createTripFromPhotos(files);
+    const result = await createTripFromPhotos(compressedFiles);
     // result: { trip, photos, summary }
     const { trip, photos } = result;
 
