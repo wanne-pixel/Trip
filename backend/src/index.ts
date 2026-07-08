@@ -1,9 +1,9 @@
 import 'dotenv/config';
 import express, { Request, Response, NextFunction } from 'express';
 import cors from 'cors';
-import { tripsRouter } from './routes/trips.js';
-import { photosRouter } from './routes/photos.js';
-import type { ApiResponse } from './types/index.js';
+import { tripsRouter } from './routes/trips';
+import { photosRouter } from './routes/photos';
+import type { ApiResponse } from './types/index';
 
 const app = express();
 const PORT = process.env.PORT ?? 3001;

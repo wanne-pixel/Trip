@@ -1,5 +1,5 @@
 import exifr from 'exifr';
-import type { ExifResult } from '../types/index.js';
+import type { ExifResult } from '../types/index';
 
 /**
  * Rule 2 — Graceful Fallback

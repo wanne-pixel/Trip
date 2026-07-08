@@ -19,3 +19,17 @@ export const supabase = createClient(supabaseUrl, supabaseServiceKey, {
     persistSession: false,
   },
 });
+
+// 버킷 자동 생성 (trip-photos)
+supabase.storage.createBucket('trip-photos', { public: true })
+  .then(({ data, error }) => {
+    if (error) {
+      if (error.message.toLowerCase().includes('already exists') || error.message.toLowerCase().includes('duplicate')) {
+        console.log('[Supabase] trip-photos 버킷이 이미 존재합니다.');
+      } else {
+        console.error('[Supabase] trip-photos 버킷 생성 실패:', error.message);
+      }
+    } else {
+      console.log('[Supabase] trip-photos 버킷이 성공적으로 생성되었습니다.');
+    }
+  });

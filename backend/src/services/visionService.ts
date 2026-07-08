@@ -1,5 +1,5 @@
 import OpenAI from 'openai';
-import type { VisionTags } from '../types/index.js';
+import type { VisionTags } from '../types/index';
 
 let openaiClient: OpenAI | null = null;
 

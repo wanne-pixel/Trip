@@ -1,6 +1,6 @@
 import { Router, Request, Response } from 'express';
-import { supabase } from '../config/supabase.js';
-import type { Trip, ApiResponse, CreateTripBody, PatchTripMetadataBody } from '../types/index.js';
+import { supabase } from '../config/supabase';
+import type { Trip, ApiResponse, CreateTripBody, PatchTripMetadataBody } from '../types/index';
 
 export const tripsRouter = Router();
 

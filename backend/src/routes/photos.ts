@@ -2,10 +2,10 @@ import { Router, Request, Response } from 'express';
 import multer from 'multer';
 import { v4 as uuidv4 } from 'uuid';
 import path from 'path';
-import { supabase } from '../config/supabase.js';
-import { extractExif } from '../services/exifService.js';
-import { extractVisionTags } from '../services/visionService.js';
-import type { Photo, ApiResponse, UploadPhotoBody } from '../types/index.js';
+import { supabase } from '../config/supabase';
+import { extractExif } from '../services/exifService';
+import { extractVisionTags } from '../services/visionService';
+import type { Photo, ApiResponse, UploadPhotoBody } from '../types/index';
 
 export const photosRouter = Router();
 
@@ -105,7 +105,7 @@ photosRouter.post(
       // ── Step 4: photos 테이블에 INSERT ──
       const newPhoto: Omit<Photo, 'created_at'> & { id: string } = {
         id: photoId,
-        trip_id: trip_id ?? '',
+        trip_id: (trip_id && trip_id !== '') ? trip_id : null,
         storage_path,
         original_filename: file.originalname,
         taken_at: exifResult.taken_at,
