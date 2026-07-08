@@ -52,6 +52,15 @@ photosRouter.post(
 
     const file = req.file;
     const trip_id = req.body.trip_id ?? null;
+
+    // v2.0: trip_id는 필수 (photos.trip_id NOT NULL)
+    if (!trip_id || trip_id === '') {
+      const response: ApiResponse<never> = {
+        success: false,
+        error: 'trip_id가 필요합니다. 먼저 POST /api/trips로 여행을 생성하거나, POST /api/trips/from-photos를 사용하세요.',
+      };
+      return res.status(400).json(response);
+    }
     const metadata = (() => {
       try {
         return req.body.metadata
@@ -66,14 +75,9 @@ photosRouter.post(
       // ── Step 1: EXIF 추출 (Rule 2: 실패해도 앱 계속 동작) ──
       const exifResult = await extractExif(file.buffer);
 
-      // ── Step 2: Vision 태그 추출 (classified: false인 경우에만) ──
-      // classified: true = 타임라인 배치, false = 미분류 서랍 → Vision으로 보완
-      let vision_tags = null;
-      if (!exifResult.classified) {
-        const base64 = file.buffer.toString('base64');
-        vision_tags = await extractVisionTags(base64, file.mimetype);
-        // Rule 2: extractVisionTags는 절대 throw하지 않으므로 null이면 그냥 진행
-      }
+      // ── Step 2: Vision 태그 추출 (모든 사진에 태그 부여) ──
+      const base64 = file.buffer.toString('base64');
+      const vision_tags = await extractVisionTags(base64, file.mimetype);
 
       // ── Step 3: Supabase Storage에 업로드 ──
       const ext = path.extname(file.originalname) || '.jpg';
@@ -103,9 +107,9 @@ photosRouter.post(
       const storage_path = publicUrlData.publicUrl;
 
       // ── Step 4: photos 테이블에 INSERT ──
-      const newPhoto: Omit<Photo, 'created_at'> & { id: string } = {
+      const newPhotoRow = {
         id: photoId,
-        trip_id: (trip_id && trip_id !== '') ? trip_id : null,
+        trip_id: trip_id as string,    // v2.0: NOT NULL — 이미 위에서 검증됨
         storage_path,
         original_filename: file.originalname,
         taken_at: exifResult.taken_at,
@@ -118,7 +122,7 @@ photosRouter.post(
 
       const { data, error: dbError } = await supabase
         .from('photos')
-        .insert(newPhoto)
+        .insert(newPhotoRow)
         .select()
         .single();
 
@@ -144,6 +148,73 @@ photosRouter.post(
     }
   }
 );
+
+// ─────────────────────────────────────────────
+// DELETE /api/photos/:id — 사진 단건 삭제 (v2.1)
+// 처리 순서: storage_path 조회 → Storage 파일 삭제 → DB 레코드 삭제
+// Storage 삭제 실패 시 경고만 남기고 DB 삭제는 계속 진행 (Rule 2)
+// ─────────────────────────────────────────────
+photosRouter.delete('/:id', async (req: Request<{ id: string }>, res: Response) => {
+  const id = req.params.id;
+
+  try {
+    // Step 1: 해당 사진의 storage_path 조회
+    const { data: photo, error: fetchError } = await supabase
+      .from('photos')
+      .select('id, storage_path')
+      .eq('id', id)
+      .single();
+
+    if (fetchError) {
+      const statusCode = fetchError.code === 'PGRST116' ? 404 : 500;
+      const response: ApiResponse<never> = {
+        success: false,
+        error: statusCode === 404 ? `사진(id: ${id})을 찾을 수 없습니다.` : fetchError.message,
+      };
+      return res.status(statusCode).json(response);
+    }
+
+    // Step 2: Supabase Storage에서 파일 삭제
+    // 공개 URL에서 버킷 이후 경로만 추출
+    const match = (photo as { storage_path: string }).storage_path.match(/trip-photos\/(.+)$/);
+    if (match) {
+      const storagePath = match[1];
+      const { error: storageError } = await supabase.storage
+        .from('trip-photos')
+        .remove([storagePath]);
+
+      if (storageError) {
+        // Rule 2: Storage 삭제 실패해도 DB 삭제는 계속 진행
+        console.warn(`[PhotosRoute/DELETE] Storage 파일 삭제 실패 (무시): ${storageError.message}`);
+      }
+    } else {
+      console.warn(`[PhotosRoute/DELETE] storage_path 파싱 실패, Storage 삭제 건너뜀: ${(photo as { storage_path: string }).storage_path}`);
+    }
+
+    // Step 3: photos 테이블에서 레코드 삭제
+    const { error: deleteError } = await supabase
+      .from('photos')
+      .delete()
+      .eq('id', id);
+
+    if (deleteError) {
+      const response: ApiResponse<never> = {
+        success: false,
+        error: `사진 삭제 실패: ${deleteError.message}`,
+      };
+      return res.status(500).json(response);
+    }
+
+    const response: ApiResponse<{ deleted_photo_id: string }> = {
+      success: true,
+      data: { deleted_photo_id: id },
+    };
+    return res.json(response);
+  } catch (err) {
+    const response: ApiResponse<never> = { success: false, error: (err as Error).message };
+    return res.status(500).json(response);
+  }
+});
 
 // ─────────────────────────────────────────────
 // GET /api/photos/unclassified — 미분류 사진 목록 조회
@@ -172,12 +243,18 @@ photosRouter.get('/unclassified', async (_req: Request, res: Response) => {
 
 // ─────────────────────────────────────────────
 // GET /api/photos — 특정 trip의 사진 목록 조회 (선택적 trip_id 필터)
+// TASK_AgentB_002: taken_at ASC 정렬 보강 (NULL은 맨 뒤 — 미분류 사진)
 // ─────────────────────────────────────────────
 photosRouter.get('/', async (req: Request, res: Response) => {
   const { trip_id } = req.query;
 
   try {
-    let query = supabase.from('photos').select('*').order('taken_at', { ascending: true });
+    // taken_at ASC 정렬: NULL(미분류)은 항상 맨 뒤 (nullsFirst: false)
+    // 이렇게 해야 타임라인에서 시간순 정렬 후 미분류 서랍 항목이 뒤에 위치함
+    let query = supabase
+      .from('photos')
+      .select('*')
+      .order('taken_at', { ascending: true, nullsFirst: false });
 
     if (trip_id && typeof trip_id === 'string') {
       query = query.eq('trip_id', trip_id);

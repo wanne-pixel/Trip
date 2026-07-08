@@ -35,6 +35,18 @@ app.use('/api/trips', tripsRouter);
 app.use('/api/photos', photosRouter);
 
 // ─────────────────────────────────────────────
+// 프론트엔드 정적 파일 서빙 (v2.2 통합 배포용)
+// ─────────────────────────────────────────────
+import path from 'path';
+app.use(express.static(path.join(__dirname, '../../frontend')));
+
+// 모든 알 수 없는 경로는 index.html로 라우팅 (SPA 지원)
+app.get('*', (req: Request, res: Response, next: NextFunction) => {
+  if (req.path.startsWith('/api')) return next();
+  res.sendFile(path.join(__dirname, '../../frontend/index.html'));
+});
+
+// ─────────────────────────────────────────────
 // 404 핸들러
 // ─────────────────────────────────────────────
 app.use((_req: Request, res: Response) => {
@@ -80,9 +92,14 @@ app.listen(PORT, () => {
   console.log(`   GET    /api/trips/:id`);
   console.log(`   POST   /api/trips`);
   console.log(`   PATCH  /api/trips/:id/metadata`);
+  console.log(`   DELETE /api/trips/:id             ← v2.1 NEW: 여행+사진 연쇄 삭제`);
+  console.log(`   POST   /api/trips/from-photos    ← v2.0: 다중 사진 기반 여행 자동 생성`);
   console.log(`   POST   /api/photos/upload`);
+  console.log(`   DELETE /api/photos/:id            ← v2.1 NEW: 사진 단건 삭제`);
   console.log(`   GET    /api/photos/unclassified`);
-  console.log(`   GET    /api/photos?trip_id=...`);
+  console.log(`   GET    /api/photos?trip_id=...   ← v2.0: taken_at ASC, NULL LAST 정렬`);
 });
+
+
 
 export default app;
