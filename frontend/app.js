@@ -33,10 +33,13 @@ async function fetchPhotosByTrip(tripId) {
  * POST /api/trips/from-photos → { trip, photos, summary }
  * 다중 사진 업로드 기반 여행 자동 생성
  */
-async function createTripFromPhotos(files) {
+async function createTripFromPhotos(compressedFiles, originalFiles) {
   const formData = new FormData();
-  for (const file of files) {
-    formData.append('photos', file);
+  for (let i = 0; i < compressedFiles.length; i++) {
+    formData.append('photos', compressedFiles[i]);
+    if (originalFiles && originalFiles[i]) {
+      formData.append('exif_chunks', originalFiles[i].slice(0, 128 * 1024), originalFiles[i].name);
+    }
   }
   const res = await fetch(`${API_BASE_URL}/trips/from-photos`, {
     method: 'POST',
@@ -61,6 +64,19 @@ async function patchTrip(tripId, payload) {
   return json.data;
 }
 
+/** PATCH /api/trips/:id/metadata → 메타데이터 수정 */
+async function patchTripMetadata(tripId, payload) {
+  const res = await fetch(`${API_BASE_URL}/trips/${tripId}/metadata`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  });
+  if (!res.ok) throw new Error(`메타데이터 수정 오류: ${res.status}`);
+  const json = await res.json();
+  if (!json.success) throw new Error(json.error || '메타데이터 수정에 실패했습니다.');
+  return json.data;
+}
+
 /** DELETE /api/trips/:id → 여행 삭제 */
 async function deleteTrip(tripId) {
   const res = await fetch(`${API_BASE_URL}/trips/${tripId}`, { method: 'DELETE' });
@@ -71,10 +87,13 @@ async function deleteTrip(tripId) {
 }
 
 /** POST /api/trips/:id/photos → 사진 추가 업로드 */
-async function addPhotosToTrip(tripId, files) {
+async function addPhotosToTrip(tripId, compressedFiles, originalFiles) {
   const formData = new FormData();
-  for (const file of files) {
-    formData.append('photos', file);
+  for (let i = 0; i < compressedFiles.length; i++) {
+    formData.append('photos', compressedFiles[i]);
+    if (originalFiles && originalFiles[i]) {
+      formData.append('exif_chunks', originalFiles[i].slice(0, 128 * 1024), originalFiles[i].name);
+    }
   }
   const res = await fetch(`${API_BASE_URL}/trips/${tripId}/photos`, {
     method: 'POST',
@@ -518,6 +537,14 @@ function renderTripPage(trip, indexNumber) {
                 ${trip.title}
                 <span class="edit-hint">✏️</span>
               </h2>
+              <p class="details-dest inline-editable-dest ${destText ? '' : 'desc-placeholder'}"
+                 id="tripDest-${trip.id}"
+                 data-field="destination"
+                 data-trip-id="${trip.id}"
+                 title="클릭하여 목적지 수정">
+                📍 ${destText || destPlaceholder}
+                <span class="edit-hint" style="font-size:11px;">✏️</span>
+              </p>
               <p class="details-desc inline-editable-desc ${descText ? '' : 'desc-placeholder'}"
                  id="tripDesc-${trip.id}"
                  data-field="description"
@@ -628,6 +655,11 @@ function attachEventListeners() {
     el.addEventListener('click', handleTitleEditStart);
   });
 
+  // ── 목적지 인라인 편집 ─────────────────────────────
+  document.querySelectorAll('.inline-editable-dest').forEach(el => {
+    el.addEventListener('click', handleDestEditStart);
+  });
+
   // ── 기간/설명 인라인 편집 ─────────────────────────────
   document.querySelectorAll('.inline-editable-desc').forEach(el => {
     el.addEventListener('click', handleDescEditStart);
@@ -730,7 +762,7 @@ async function handleFilesSelected(files) {
   showLoadingOverlay(`압축 완료! AI가 ${compressedFiles.length}장의 사진을 분석하여\n여행의 조각들을 맞추고 있습니다...`);
 
   try {
-    const result = await createTripFromPhotos(compressedFiles);
+    const result = await createTripFromPhotos(compressedFiles, files);
     // result: { trip, photos, summary }
     const { trip, photos } = result;
 
@@ -795,7 +827,7 @@ async function handleAddPhotos(e) {
 
   showLoadingOverlay(`사진을 업로드하고 AI가 분석 중입니다...`);
   try {
-    const newPhotos = await addPhotosToTrip(tripId, compressedFiles);
+    const newPhotos = await addPhotosToTrip(tripId, compressedFiles, files);
     if (!state.tripPhotos[tripId]) state.tripPhotos[tripId] = [];
     state.tripPhotos[tripId].push(...newPhotos);
     refreshPhotoSection(tripId);
@@ -900,6 +932,52 @@ function handleDescEditStart(e) {
   });
 }
 
+/* ── 목적지 인라인 편집 ── */
+function handleDestEditStart(e) {
+  const el = e.currentTarget;
+  const tripId = el.dataset.tripId;
+  const trip = state.trips.find(t => t.id === tripId);
+  const currentDest = trip?.metadata?.destination || '';
+  const placeholder = '목적지를 입력하세요 (예: 제주도, 파리)';
+
+  const input = document.createElement('input');
+  input.type = 'text';
+  input.value = currentDest;
+  input.placeholder = placeholder;
+  input.className = 'title-inline-input desc-inline-input';
+
+  el.replaceWith(input);
+  input.focus();
+  input.select();
+
+  const commitEdit = async () => {
+    const newDest = input.value.trim();
+    if (newDest === currentDest) {
+      input.replaceWith(el);
+      return;
+    }
+    try {
+      const updated = await patchTripMetadata(tripId, { metadata: { destination: newDest } });
+      const tripInState = state.trips.find(t => t.id === tripId);
+      if (tripInState) tripInState.metadata = updated.metadata;
+      el.innerHTML = `📍 ${newDest || placeholder} <span class="edit-hint" style="font-size:11px;">✏️</span>`;
+      el.classList.toggle('desc-placeholder', !newDest);
+      input.replaceWith(el);
+      showToast('✅ 목적지가 수정되었습니다.');
+    } catch (err) {
+      console.error('[patchTripMetadata dest 실패]', err);
+      showToast(`❌ 수정 실패: ${err.message}`, true);
+      input.replaceWith(el);
+    }
+  };
+
+  input.addEventListener('blur', commitEdit);
+  input.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') { e.preventDefault(); input.blur(); }
+    if (e.key === 'Escape') { input.replaceWith(el); }
+  });
+}
+
 /* ── 여행 삭제 핸들러 ── */
 async function handleTripDelete(e) {
   const tripId = e.currentTarget.dataset.tripId;
@@ -960,7 +1038,7 @@ async function handlePhotoSplit(e) {
   const newOverrides = { ...currentOverrides, [photoId]: newGroupId };
   
   try {
-    const updatedTrip = await updateTrip(tripId, {
+    const updatedTrip = await patchTripMetadata(tripId, {
       metadata: { ...trip.metadata, group_overrides: newOverrides }
     });
     const idx = state.trips.findIndex(t => t.id === tripId);
@@ -992,7 +1070,7 @@ async function handleMergeUp(e) {
   prevIds.forEach(id => newOverrides[id] = newGroupId);
   
   try {
-    const updatedTrip = await updateTrip(tripId, {
+    const updatedTrip = await patchTripMetadata(tripId, {
       metadata: { ...trip.metadata, group_overrides: newOverrides }
     });
     const idx = state.trips.findIndex(t => t.id === tripId);

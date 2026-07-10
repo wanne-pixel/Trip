@@ -396,9 +396,10 @@ function calculateTripDateDescription(takenAts: (string | null)[]): string {
 
 tripsRouter.post(
   '/from-photos',
-  uploadMulti.array('photos', 50),
+  uploadMulti.fields([{ name: 'photos', maxCount: 50 }, { name: 'exif_chunks', maxCount: 50 }]),
   async (req: Request, res: Response) => {
-    const files = req.files as Express.Multer.File[] | undefined;
+    const files = (req.files as any)?.['photos'] as Express.Multer.File[] | undefined;
+    const exifChunks = (req.files as any)?.['exif_chunks'] as Express.Multer.File[] | undefined;
 
     if (!files || files.length === 0) {
       const response: ApiResponse<never> = {
@@ -412,8 +413,9 @@ tripsRouter.post(
       // ── Step 1: 각 사진 EXIF + Vision 병렬 추출 ──
       // Promise.allSettled: 일부 실패해도 전체 중단 없음 (Rule 2)
       const metaResults = await Promise.allSettled(
-        files.map(async (file) => {
-          const exif: ExifResult = await extractExif(file.buffer);
+        files.map(async (file, idx) => {
+          const exifFile = exifChunks?.[idx] || file;
+          const exif: ExifResult = await extractExif(exifFile.buffer);
 
           // 사진마다 태그를 붙이기 위해 항상 Vision API 호출 (v2.0)
           const base64 = file.buffer.toString('base64');
@@ -588,10 +590,11 @@ tripsRouter.post(
 // ─────────────────────────────────────────────
 tripsRouter.post(
   '/:id/photos',
-  uploadMulti.array('photos', 50),
+  uploadMulti.fields([{ name: 'photos', maxCount: 50 }, { name: 'exif_chunks', maxCount: 50 }]),
   async (req: Request<{ id: string }>, res: Response) => {
     const tripId = req.params.id;
-    const files = req.files as Express.Multer.File[] | undefined;
+    const files = (req.files as any)?.['photos'] as Express.Multer.File[] | undefined;
+    const exifChunks = (req.files as any)?.['exif_chunks'] as Express.Multer.File[] | undefined;
 
     if (!files || files.length === 0) {
       const response: ApiResponse<never> = {
@@ -605,8 +608,9 @@ tripsRouter.post(
       // ── Step 1: 각 사진 EXIF + Vision 병렬 처리 ──
       // Promise.allSettled: 일부 실패해도 전체 중단 없음 (Rule 2)
       const metaResults = await Promise.allSettled(
-        files.map(async (file) => {
-          const exif: ExifResult = await extractExif(file.buffer);
+        files.map(async (file, idx) => {
+          const exifFile = exifChunks?.[idx] || file;
+          const exif: ExifResult = await extractExif(exifFile.buffer);
 
           // 모든 사진에 Vision API 호출 (category 태그 부여)
           const base64 = file.buffer.toString('base64');
