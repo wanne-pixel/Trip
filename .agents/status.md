@@ -1,6 +1,6 @@
 # Trip Project — 현재 상태판 (Status Board)
 
-*최종 업데이트: 2026-07-08 by Master Agent*
+*최종 업데이트: 2026-07-10 by Agent C*
 
 ---
 
@@ -12,7 +12,7 @@
 | **Master Agent** | `HOTFIX_002` | ✅ 완료 | v2.2 배포 설정 (프론트엔드/백엔드 서버 통합) 및 v2.3 클라이언트 사이드 대용량 이미지 압축 최적화 로직 구현 |
 | **Agent A (Frontend)** | `TASK_AgentA_011` | ✅ 완료 | 타임라인 Day 그룹화 적용, 카테고리 태그 뱃지 렌더링 추가, 기존 여행에 사진 추가 연동 |
 | **Agent B (Backend)** | `TASK_AgentB_003` | ✅ 완료 | v2.1 여행/사진 삭제 API 추가 및 제목 연도 제외, 여행 기간 자동 계산 로직 적용 |
-| **Agent C (DevOps)** | `TASK_AgentC_002` | ✅ 완료 | 사진 업로드 기능 End-to-End 테스트 완료 |
+| **Agent C (DevOps)** | `TASK_AgentC_004` | ✅ 완료 | v2.5(슬라이드 묶음) 및 v2.6(수동 묶기/분리 UX) 코드 Git 푸시 및 통합 테스트 검증 완료 |
 | **Agent Test (임시)** | `TASK_AgentTest_001` | ✅ 완료 | Vision API 비교 테스트용 독립 로컬 서버(PORT 8080) 구축 |
 
 ### 2. 현재 활성화된 로컬 서버 주소
@@ -24,7 +24,7 @@
 ## 🛠️ 시스템 정보 및 DB 스키마 정보
 - Node.js: v24.16.0
 - DB: Supabase (연동 완료)
-- Git Branch: `master` (최신 업데이트 중)
+- Git Branch: `master` (최신 커밋: `ab55542`)
 
 ### Agent B 구현 완료 파일
 | 파일 | 상태 |
