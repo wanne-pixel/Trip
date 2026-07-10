@@ -311,6 +311,47 @@ img { display: block; width: 100%; object-fit: cover; }
   border-radius: 12px;
 }
 
+.add-photo-bar {
+  margin-bottom: 24px;
+}
+.add-photo-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  width: 100%;
+  padding: 12px;
+  border-radius: 12px;
+  background: var(--color-surface);
+  border: 1.5px dashed var(--color-gold);
+  color: var(--color-leather);
+  font-size: 13.5px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+.add-photo-btn:hover {
+  background: rgba(212, 175, 55, 0.05);
+}
+
+.timeline-day-header {
+  margin: 20px 0 12px;
+  padding: 0 4px;
+}
+.timeline-day-header h3 {
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--color-leather);
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+}
+.timeline-day-header h3 span {
+  font-size: 11px;
+  color: var(--color-text-muted);
+  font-weight: 500;
+}
+
 .timeline-list {
   display: flex;
   flex-direction: column;
@@ -333,6 +374,40 @@ img { display: block; width: 100%; object-fit: cover; }
   background: var(--color-surface);
   border: 1px solid var(--color-border);
   box-shadow: var(--shadow-card);
+}
+.photo-slider {
+  display: flex;
+  overflow-x: auto;
+  scroll-snap-type: x mandatory;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: none;
+}
+.photo-slider::-webkit-scrollbar {
+  display: none;
+}
+.photo-slide {
+  flex: 0 0 100%;
+  scroll-snap-align: center;
+  position: relative;
+}
+.slide-counter {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  background: rgba(0,0,0,0.6);
+  color: #fff;
+  padding: 4px 8px;
+  border-radius: 12px;
+  font-size: 11px;
+  font-weight: bold;
+  pointer-events: none;
+}
+.slide-delete-btn {
+  position: absolute;
+  top: 10px;
+  left: 10px;
+  background: rgba(255,255,255,0.8);
+  box-shadow: 0 1px 3px rgba(0,0,0,0.2);
 }
 .timeline-photo-img { width: 100%; max-height: 240px; object-fit: cover; display: block; }
 .timeline-photo-placeholder {
@@ -360,6 +435,7 @@ img { display: block; width: 100%; object-fit: cover; }
 
 /* ── Vision 태그 뱃지 ──────────────────────────────────── */
 .vtag { font-size: 10px; font-weight: 600; padding: 3px 8px; border-radius: 20px; white-space: nowrap; }
+.vtag-category { background: rgba(193, 125, 82, 0.1); color: var(--color-terracotta); border: 1px solid rgba(193, 125, 82, 0.3); }
 .vtag-time { background: rgba(212, 175, 55, 0.15); color: var(--color-gold-dark); border: 1px solid rgba(212,175,55,0.3); }
 .vtag-env  { background: rgba(78, 40, 22, 0.08); color: var(--color-leather); border: 1px solid rgba(78,40,22,0.2); }
 .vtag-unknown { background: rgba(139, 34, 34, 0.1); color: #8B2222; border: 1px solid rgba(139,34,34,0.2); }

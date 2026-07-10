@@ -70,6 +70,22 @@ async function deleteTrip(tripId) {
   return true;
 }
 
+/** POST /api/trips/:id/photos → 사진 추가 업로드 */
+async function addPhotosToTrip(tripId, files) {
+  const formData = new FormData();
+  for (const file of files) {
+    formData.append('photos', file);
+  }
+  const res = await fetch(`${API_BASE_URL}/trips/${tripId}/photos`, {
+    method: 'POST',
+    body: formData,
+  });
+  if (!res.ok) throw new Error(`사진 추가 오류: ${res.status}`);
+  const json = await res.json();
+  if (!json.success) throw new Error(json.error || '사진을 추가하지 못했습니다.');
+  return json.data;
+}
+
 /** DELETE /api/photos/:id → 사진 삭제 */
 async function deletePhoto(photoId) {
   const res = await fetch(`${API_BASE_URL}/photos/${photoId}`, { method: 'DELETE' });
@@ -308,38 +324,104 @@ function renderTimeline(tripId) {
     return `<div class="photo-section-empty">📸 타임라인에 분류된 사진이 없습니다.</div>`;
   }
 
-  const items = classified.map(p => {
-    const dateStr = p.taken_at ? new Date(p.taken_at).toLocaleDateString('ko-KR', { month: 'long', day: 'numeric', hour: '2-digit', minute: '2-digit' }) : '';
+  let html = '<div class="timeline-list">';
+  let currentDay = 0;
+  let currentDayString = null;
+  let unknownHtml = '';
 
+  // v2.5: 시간 기반(3분 이내) 사진 그룹화
+  const groups = [];
+  let currentGroup = [];
+
+  classified.forEach(p => {
+    if (currentGroup.length === 0) {
+      currentGroup.push(p);
+      return;
+    }
+    
+    const lastP = currentGroup[currentGroup.length - 1];
+    if (p.taken_at && lastP.taken_at) {
+      const diffMs = new Date(p.taken_at).getTime() - new Date(lastP.taken_at).getTime();
+      if (diffMs <= 3 * 60 * 1000) { // 3분 이내
+        currentGroup.push(p);
+      } else {
+        groups.push([...currentGroup]);
+        currentGroup = [p];
+      }
+    } else {
+      groups.push([...currentGroup]);
+      currentGroup = [p];
+    }
+  });
+  if (currentGroup.length > 0) groups.push(currentGroup);
+
+  groups.forEach(group => {
+    const firstP = group[0];
+    let dateObj = firstP.taken_at ? new Date(firstP.taken_at) : null;
     let tags = '';
-    if (p.vision_tags) {
-      if (p.vision_tags.time_of_day) tags += `<span class="vtag vtag-time">${timeOfDayLabel(p.vision_tags.time_of_day)}</span>`;
-      if (p.vision_tags.environment) tags += `<span class="vtag vtag-env">${envLabel(p.vision_tags.environment)}</span>`;
+
+    // 태그는 그룹의 첫 번째 사진을 기준으로 표시
+    if (firstP.vision_tags) {
+      if (firstP.vision_tags.category) {
+        tags = `<span class="vtag vtag-category">${categoryLabel(firstP.vision_tags.category)}</span>`;
+      } else {
+        if (firstP.vision_tags.environment === 'nature' || firstP.vision_tags.environment === 'outdoor') tags = `<span class="vtag vtag-category">🏞 풍경</span>`;
+        else if (firstP.vision_tags.environment === 'indoor') tags = `<span class="vtag vtag-category">🏠 실내</span>`;
+        else tags = `<span class="vtag vtag-category">📌 기타</span>`;
+      }
     } else {
       tags = `<span class="vtag vtag-unknown">분석 불가</span>`;
     }
 
-    const imgHtml = p.storage_path
-      ? `<img class="timeline-photo-img" src="${p.storage_path}" alt="${p.original_filename}">`
-      : `<div class="timeline-photo-placeholder">🖼️<span>${p.original_filename}</span></div>`;
+    const sliderHtml = group.map((gp, i) => `
+      <div class="photo-slide" id="photo-item-${gp.id}">
+        ${gp.storage_path
+          ? `<img class="timeline-photo-img" src="${gp.storage_path}" alt="${gp.original_filename}">`
+          : `<div class="timeline-photo-placeholder">🖼️<span>${gp.original_filename}</span></div>`
+        }
+        ${group.length > 1 ? `<div class="slide-counter">${i + 1} / ${group.length}</div>` : ''}
+        <button class="photo-delete-btn slide-delete-btn" data-photo-id="${gp.id}" data-trip-id="${gp.trip_id}" title="사진 삭제">🗑</button>
+      </div>
+    `).join('');
 
-    return `
-      <div class="timeline-item" id="photo-item-${p.id}">
+    let cardHtml = `
+      <div class="timeline-item">
         <div class="timeline-dot"></div>
         <div class="timeline-card">
-          ${imgHtml}
+          <div class="photo-slider">${sliderHtml}</div>
           <div class="timeline-card-footer">
-            ${dateStr ? `<span class="timeline-date">🕐 ${dateStr}</span>` : ''}
+            ${dateObj ? `<span class="timeline-date">🕐 ${dateObj.toLocaleDateString('ko-KR', { month: 'long', day: 'numeric', hour: '2-digit', minute: '2-digit' })}</span>` : ''}
             <div class="timeline-tags">${tags}</div>
-            <button class="photo-delete-btn" data-photo-id="${p.id}" data-trip-id="${p.trip_id}" title="사진 삭제">🗑</button>
           </div>
         </div>
       </div>`;
-  }).join('');
 
-  return `<div class="timeline-list">${items}</div>`;
+    if (!dateObj) {
+      unknownHtml += cardHtml;
+    } else {
+      const dateString = dateObj.toLocaleDateString('ko-KR', { year: 'numeric', month: '2-digit', day: '2-digit' });
+      if (currentDayString !== dateString) {
+        currentDay++;
+        currentDayString = dateString;
+        const displayDate = dateObj.toLocaleDateString('ko-KR', { month: 'long', day: 'numeric' });
+        html += `<div class="timeline-day-header"><h3>Day ${currentDay} <span>(${displayDate})</span></h3></div>`;
+      }
+      html += cardHtml;
+    }
+  });
+
+  if (unknownHtml) {
+    html += `<div class="timeline-day-header"><h3>알 수 없음</h3></div>${unknownHtml}`;
+  }
+
+  html += '</div>';
+  return html;
 }
 
+function categoryLabel(val) {
+  const map = { food: '🍔 음식', scenery: '🏞 풍경', accommodation: '🏨 숙소', activity: '🏃‍♂️ 액티비티', people: '👥 인물', other: '📌 기타' };
+  return map[val] || (val ? '📌 기타' : '분석 불가');
+}
 function timeOfDayLabel(val) {
   return { morning: '🌅 아침', afternoon: '☀️ 오후', night: '🌙 야간' }[val] || val;
 }
@@ -358,9 +440,17 @@ function renderDrawerContent(tripId) {
     const imgHtml = p.storage_path
       ? `<img class="drawer-photo-img" src="${p.storage_path}" alt="${p.original_filename}">`
       : `<div class="drawer-photo-placeholder">🖼️</div>`;
-    const tag = p.vision_tags === null
-      ? `<span class="vtag vtag-unknown">분석 불가</span>`
-      : '';
+    let tag = '';
+    if (p.vision_tags === null) {
+      tag = `<span class="vtag vtag-unknown">분석 불가</span>`;
+    } else if (p.vision_tags.category) {
+      tag = `<span class="vtag vtag-category">${categoryLabel(p.vision_tags.category)}</span>`;
+    } else {
+      // 구버전 데이터 호환
+      if (p.vision_tags.environment === 'nature' || p.vision_tags.environment === 'outdoor') tag = `<span class="vtag vtag-category">🏞 풍경</span>`;
+      else if (p.vision_tags.environment === 'indoor') tag = `<span class="vtag vtag-category">🏠 실내</span>`;
+      else tag = `<span class="vtag vtag-category">📌 기타</span>`;
+    }
     return `
       <div class="drawer-photo-card" id="photo-item-${p.id}">
         ${imgHtml}${tag}
@@ -411,6 +501,13 @@ function renderTripPage(trip, indexNumber) {
                 <span class="edit-hint" style="font-size:11px;">✏️</span>
               </p>
             </div>
+          </div>
+
+          <div class="add-photo-bar">
+            <input type="file" id="addPhotos-${trip.id}" multiple accept="image/*" style="display:none;" data-trip-id="${trip.id}">
+            <label for="addPhotos-${trip.id}" class="add-photo-btn">
+              <span class="icon">➕</span> 이 여행에 사진 추가하기
+            </label>
           </div>
 
           <!-- 타임라인 섹션 -->
@@ -494,6 +591,11 @@ function attachEventListeners() {
 
   // ── v2.0: 다중 사진 업로드 ────────────────────────────
   setupPhotoUploadZone();
+
+  // ── 사진 추가 (기존 여행에 추가) ──────────────────────
+  document.querySelectorAll('[id^="addPhotos-"]').forEach(input => {
+    input.addEventListener('change', (e) => handleAddPhotos(e));
+  });
 
   // ── 제목 인라인 편집 ──────────────────────────────────
   document.querySelectorAll('.inline-editable').forEach(el => {
@@ -619,6 +721,58 @@ async function handleFilesSelected(files) {
   // input 초기화
   const input = document.getElementById('multiPhotoInput');
   if (input) input.value = '';
+}
+
+async function handleAddPhotos(e) {
+  const input = e.target;
+  const tripId = input.dataset.tripId;
+  const files = Array.from(input.files);
+  if (!files || files.length === 0) return;
+
+  if (files.length > 50) {
+    showToast(`❌ 한 번에 최대 50장까지만 업로드할 수 있습니다.`, true);
+    input.value = '';
+    return;
+  }
+
+  showLoadingOverlay(`선택하신 ${files.length}장의 사진을 압축하고 있습니다...`);
+
+  const compressedFiles = [];
+  try {
+    for (let i = 0; i < files.length; i++) {
+      const file = files[i];
+      const options = {
+        maxSizeMB: 1, maxWidthOrHeight: 1920, useWebWorker: true,
+        preserveExif: true, fileType: 'image/jpeg'
+      };
+      const compressedBlob = await imageCompression(file, options);
+      compressedFiles.push(new File([compressedBlob], file.name, {
+        type: compressedBlob.type || 'image/jpeg',
+        lastModified: file.lastModified
+      }));
+    }
+  } catch (err) {
+    console.error('[이미지 압축 실패]', err);
+    hideLoadingOverlay();
+    showToast(`❌ 사진 압축 중 오류가 발생했습니다.`, true);
+    input.value = '';
+    return;
+  }
+
+  showLoadingOverlay(`사진을 업로드하고 AI가 분석 중입니다...`);
+  try {
+    const newPhotos = await addPhotosToTrip(tripId, compressedFiles);
+    if (!state.tripPhotos[tripId]) state.tripPhotos[tripId] = [];
+    state.tripPhotos[tripId].push(...newPhotos);
+    refreshPhotoSection(tripId);
+    hideLoadingOverlay();
+    showToast(`✅ ${newPhotos.length}장의 사진이 추가되었습니다!`);
+  } catch (err) {
+    console.error('[addPhotosToTrip 실패]', err);
+    hideLoadingOverlay();
+    showToast(`❌ 사진 추가 실패: ${err.message}`, true);
+  }
+  input.value = '';
 }
 
 /* ── 제목 인라인 편집 ── */

@@ -19,12 +19,20 @@ function getOpenAIClient(): OpenAI | null {
   return openaiClient;
 }
 
+// v2.4: category 단일 필드로 개편 — 실용적인 6개 카테고리
 const VISION_PROMPT = `이 사진을 보고 JSON으로만 답하세요. 다른 텍스트는 일절 포함하지 마세요.
-형식: {"time_of_day":"morning"|"afternoon"|"night","environment":"indoor"|"outdoor"|"urban"|"nature"}`;
+형식: {"category":"food"|"scenery"|"accommodation"|"activity"|"people"|"other"}
+• food: 음식, 식당, 커피, 요리
+• scenery: 풍경, 자연, 건축물 외관, 다리, 한옥 등 연경
+• accommodation: 호텔, 숙소, 방, 로비 등 숙소 내부
+• activity: 스포츠, 액티비티, 어트랙션, 투어
+• people: 인물 사진, 단체사진, 셀피
+• other: 위에 해당하지 않는 등`;
 
 /**
  * Rule 2 — Graceful Fallback
- * OpenAI Vision API로 사진의 기본 태그(시간대, 환경)를 추출합니다.
+ * OpenAI Vision API로 사진의 카테고리 태그를 추출합니다. (v2.4 개편)
+ * food | scenery | accommodation | activity | people | other
  * API 호출 실패, JSON 파싱 실패 등 모든 에러에서 null을 반환하며
  * 절대 예외를 throw하지 않습니다.
  *
@@ -78,14 +86,10 @@ export async function extractVisionTags(
 
     const tags: VisionTags = {};
 
-    const validTimeOfDay = ['morning', 'afternoon', 'night'];
-    if (validTimeOfDay.includes(parsed.time_of_day)) {
-      tags.time_of_day = parsed.time_of_day as VisionTags['time_of_day'];
-    }
-
-    const validEnvironment = ['indoor', 'outdoor', 'urban', 'nature'];
-    if (validEnvironment.includes(parsed.environment)) {
-      tags.environment = parsed.environment as VisionTags['environment'];
+    // v2.4: category 단일 필드 파싱
+    const validCategories = ['food', 'scenery', 'accommodation', 'activity', 'people', 'other'];
+    if (validCategories.includes(parsed.category)) {
+      tags.category = parsed.category as VisionTags['category'];
     }
 
     return tags;

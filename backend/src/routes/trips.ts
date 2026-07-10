@@ -443,8 +443,7 @@ tripsRouter.post(
         if (exif.latitude != null && exif.longitude != null) {
           parts.push(`위치: 위도 ${exif.latitude.toFixed(4)}, 경도 ${exif.longitude.toFixed(4)}`);
         }
-        if (vision?.time_of_day) parts.push(`시간대: ${vision.time_of_day}`);
-        if (vision?.environment) parts.push(`환경: ${vision.environment}`);
+        if (vision?.category) parts.push(`카테고리: ${vision.category}`);  // v2.4: category로 교체
         return parts.join(' | ');
       });
 
@@ -565,6 +564,155 @@ tripsRouter.post(
     } catch (err) {
       // Rule 2: 최상위 catch — 절대 500으로 서버를 죽이지 않음
       console.error('[TripsRoute/from-photos] 예상치 못한 오류:', (err as Error).message);
+      const response: ApiResponse<never> = {
+        success: false,
+        error: (err as Error).message,
+      };
+      return res.status(500).json(response);
+    }
+  }
+);
+
+// ─────────────────────────────────────────────
+// POST /api/trips/:id/photos — 기존 여행에 다중 사진 추가 (v2.4)
+//
+// 역할: 이미 생성된 여행(trip_id = :id)에 사진들을 추가로 업로드
+// from-photos와 다른 점: 여행 제목/테마 AI 생성 없음, 사진 처리만 수행
+//
+// 처리 흐름:
+// 1. req.params.id 로 trip_id 획득
+// 2. req.files 에서 다수 이미지 수신 (multer.array, 최대 50장)
+// 3. 각 파일: EXIF 추출 + Vision API 호출 (Promise.allSettled)
+// 4. Supabase Storage 업로드 + photos 테이블 INSERT (Promise.allSettled)
+// 5. 성공한 Photo[] 반환
+// ─────────────────────────────────────────────
+tripsRouter.post(
+  '/:id/photos',
+  uploadMulti.array('photos', 50),
+  async (req: Request<{ id: string }>, res: Response) => {
+    const tripId = req.params.id;
+    const files = req.files as Express.Multer.File[] | undefined;
+
+    if (!files || files.length === 0) {
+      const response: ApiResponse<never> = {
+        success: false,
+        error: '사진 파일이 없습니다. multipart/form-data로 "photos" 필드에 1장 이상의 이미지를 전송하세요.',
+      };
+      return res.status(400).json(response);
+    }
+
+    try {
+      // ── Step 1: 각 사진 EXIF + Vision 병렬 처리 ──
+      // Promise.allSettled: 일부 실패해도 전체 중단 없음 (Rule 2)
+      const metaResults = await Promise.allSettled(
+        files.map(async (file) => {
+          const exif: ExifResult = await extractExif(file.buffer);
+
+          // 모든 사진에 Vision API 호출 (category 태그 부여)
+          const base64 = file.buffer.toString('base64');
+          const vision: VisionTags | null = await extractVisionTags(base64, file.mimetype);
+
+          return { file, exif, vision };
+        })
+      );
+
+      // 실패한 파일은 FALLBACK으로 대체
+      const processedFiles = metaResults.map((result, idx) => {
+        if (result.status === 'fulfilled') {
+          return result.value;
+        }
+        console.warn(`[TripsRoute/:id/photos] 파일[${idx}] 메타 추출 실패 — FALLBACK:`, result.reason);
+        return {
+          file: files[idx],
+          exif: { taken_at: null, latitude: null, longitude: null, classified: false } as ExifResult,
+          vision: null as VisionTags | null,
+        };
+      });
+
+      // ── Step 2: Storage 업로드 + photos 테이블 INSERT ──
+      // Promise.allSettled: 일부 실패해도 다른 사진 계속 저장 (Rule 2)
+      const photoResults = await Promise.allSettled(
+        processedFiles.map(async ({ file, exif, vision }) => {
+          const ext = path.extname(file.originalname) || '.jpg';
+          const photoId = uuidv4();
+          const storagePath = `photos/${tripId}/${photoId}${ext}`;
+
+          // Storage 업로드
+          const { error: storageError } = await supabase.storage
+            .from('trip-photos')
+            .upload(storagePath, file.buffer, {
+              contentType: file.mimetype,
+              upsert: false,
+            });
+
+          if (storageError) {
+            throw new Error(`Storage 업로드 실패 (${file.originalname}): ${storageError.message}`);
+          }
+
+          // 공개 URL 획득
+          const { data: publicUrlData } = supabase.storage
+            .from('trip-photos')
+            .getPublicUrl(storagePath);
+
+          // photos 테이블 INSERT
+          const { data: photoData, error: dbError } = await supabase
+            .from('photos')
+            .insert({
+              id: photoId,
+              trip_id: tripId,              // 기존 여행 ID 부여
+              storage_path: publicUrlData.publicUrl,
+              original_filename: file.originalname,
+              taken_at: exif.taken_at,
+              latitude: exif.latitude,
+              longitude: exif.longitude,
+              classified: exif.classified,
+              vision_tags: vision,
+              metadata: {},                 // Rule 1: JSONB 초기값
+            })
+            .select()
+            .single();
+
+          if (dbError) {
+            throw new Error(`DB INSERT 실패 (${file.originalname}): ${dbError.message}`);
+          }
+
+          return photoData as Photo;
+        })
+      );
+
+      // 성공한 사진만 모아 반환
+      const succeededPhotos: Photo[] = [];
+      let failedCount = 0;
+
+      photoResults.forEach((result, idx) => {
+        if (result.status === 'fulfilled') {
+          succeededPhotos.push(result.value);
+        } else {
+          failedCount++;
+          console.warn(
+            `[TripsRoute/:id/photos] 사진[${idx}] 저장 실패:`,
+            result.reason instanceof Error ? result.reason.message : result.reason
+          );
+        }
+      });
+
+      // ── Step 3: 응답 반환 ──
+      const responseData = {
+        trip_id: tripId,
+        photos: succeededPhotos,
+        summary: {
+          total: files.length,
+          succeeded: succeededPhotos.length,
+          failed: failedCount,
+          classified: succeededPhotos.filter((p) => p.classified).length,
+          unclassified: succeededPhotos.filter((p) => !p.classified).length,
+        },
+      };
+
+      return res.status(201).json({ success: true, data: responseData });
+    } catch (err) {
+      // Rule 2: 최상위 catch — 절대 500으로 서버를 죽이지 않음
+      console.error('[TripsRoute/:id/photos] 예상치 못한 오류:', (err as Error).message);
       const response: ApiResponse<never> = {
         success: false,
         error: (err as Error).message,

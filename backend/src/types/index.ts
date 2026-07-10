@@ -3,9 +3,10 @@
 // Rule 3: API Contract First — 이 파일이 모든 에이전트의 계약 기준
 // ─────────────────────────────────────────────
 
+// v2.4: VisionTags — 실용적인 카테고리 단일 필드로 개편
+// 기존 time_of_day, environment → category 하나로 통합
 export interface VisionTags {
-  time_of_day?: 'morning' | 'afternoon' | 'night';
-  environment?: 'indoor' | 'outdoor' | 'urban' | 'nature';
+  category?: 'food' | 'scenery' | 'accommodation' | 'activity' | 'people' | 'other';
 }
 
 export interface Photo {

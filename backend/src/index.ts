@@ -92,13 +92,15 @@ app.listen(PORT, () => {
   console.log(`   GET    /api/trips/:id`);
   console.log(`   POST   /api/trips`);
   console.log(`   PATCH  /api/trips/:id/metadata`);
-  console.log(`   DELETE /api/trips/:id             ← v2.1 NEW: 여행+사진 연쇄 삭제`);
-  console.log(`   POST   /api/trips/from-photos    ← v2.0: 다중 사진 기반 여행 자동 생성`);
+  console.log(`   DELETE /api/trips/:id             ← v2.1: 여행+사진 연쇄 삭제`);
+  console.log(`   POST   /api/trips/from-photos     ← v2.0: 다중 사진 기반 여행 자동 생성`);
+  console.log(`   POST   /api/trips/:id/photos      ← v2.4 NEW: 기존 여행에 다중 사진 추가`);
   console.log(`   POST   /api/photos/upload`);
-  console.log(`   DELETE /api/photos/:id            ← v2.1 NEW: 사진 단건 삭제`);
+  console.log(`   DELETE /api/photos/:id            ← v2.1: 사진 단건 삭제`);
   console.log(`   GET    /api/photos/unclassified`);
-  console.log(`   GET    /api/photos?trip_id=...   ← v2.0: taken_at ASC, NULL LAST 정렬`);
+  console.log(`   GET    /api/photos?trip_id=...    ← v2.0: taken_at ASC, NULL LAST 정렬`);
 });
+
 
 
 
