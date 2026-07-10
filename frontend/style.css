@@ -402,12 +402,32 @@ img { display: block; width: 100%; object-fit: cover; }
   font-weight: bold;
   pointer-events: none;
 }
+.photo-action-btn {
+  background: rgba(255,255,255,0.85);
+  box-shadow: 0 2px 6px rgba(0,0,0,0.2);
+  width: 28px;
+  height: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 6px;
+  font-size: 14px;
+  transition: all var(--transition-base);
+}
+.photo-action-btn:hover {
+  background: #fff;
+  transform: scale(1.1);
+}
 .slide-delete-btn {
   position: absolute;
   top: 10px;
   left: 10px;
-  background: rgba(255,255,255,0.8);
-  box-shadow: 0 1px 3px rgba(0,0,0,0.2);
+  color: #d32f2f;
+}
+.slide-split-btn {
+  position: absolute;
+  top: 10px;
+  left: 44px;
 }
 .timeline-photo-img { width: 100%; max-height: 240px; object-fit: cover; display: block; }
 .timeline-photo-placeholder {
@@ -432,6 +452,23 @@ img { display: block; width: 100%; object-fit: cover; }
   transition: all var(--transition-base);
 }
 .photo-delete-btn:hover { background: rgba(211, 47, 47, 0.1); color: #d32f2f; }
+
+.timeline-merge-up-btn {
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--color-gold-dark);
+  background: rgba(212, 175, 55, 0.1);
+  border: 1px solid rgba(212, 175, 55, 0.3);
+  padding: 4px 10px;
+  border-radius: 12px;
+  transition: all 0.2s;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+.timeline-merge-up-btn:hover {
+  background: rgba(212, 175, 55, 0.2);
+}
 
 /* ── Vision 태그 뱃지 ──────────────────────────────────── */
 .vtag { font-size: 10px; font-weight: 600; padding: 3px 8px; border-radius: 20px; white-space: nowrap; }

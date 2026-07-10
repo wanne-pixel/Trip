@@ -329,7 +329,11 @@ function renderTimeline(tripId) {
   let currentDayString = null;
   let unknownHtml = '';
 
-  // v2.5: 시간 기반(3분 이내) 사진 그룹화
+  // v2.6: 수동 묶음/분리 메타데이터 가져오기
+  const trip = state.trips.find(t => t.id === tripId);
+  const overrides = trip?.metadata?.group_overrides || {};
+
+  // v2.5 & v2.6: 사진 그룹화 (3분 이내 or 수동 지정)
   const groups = [];
   let currentGroup = [];
 
@@ -340,14 +344,29 @@ function renderTimeline(tripId) {
     }
     
     const lastP = currentGroup[currentGroup.length - 1];
-    if (p.taken_at && lastP.taken_at) {
-      const diffMs = new Date(p.taken_at).getTime() - new Date(lastP.taken_at).getTime();
-      if (diffMs <= 3 * 60 * 1000) { // 3분 이내
-        currentGroup.push(p);
+    const pGroupId = overrides[p.id];
+    const lastPGroupId = overrides[lastP.id];
+
+    let shouldGroup = false;
+
+    if (pGroupId && lastPGroupId && pGroupId === lastPGroupId) {
+      // 강제 묶음: 같은 수동 그룹 ID를 가짐
+      shouldGroup = true;
+    } else if (pGroupId || lastPGroupId) {
+      // 강제 분리: 둘 중 하나라도 그룹 ID가 있거나, 서로 다름
+      shouldGroup = false;
+    } else {
+      // 기본 규칙: 3분 이내
+      if (p.taken_at && lastP.taken_at) {
+        const diffMs = new Date(p.taken_at).getTime() - new Date(lastP.taken_at).getTime();
+        shouldGroup = (diffMs <= 3 * 60 * 1000);
       } else {
-        groups.push([...currentGroup]);
-        currentGroup = [p];
+        shouldGroup = false;
       }
+    }
+
+    if (shouldGroup) {
+      currentGroup.push(p);
     } else {
       groups.push([...currentGroup]);
       currentGroup = [p];
@@ -355,7 +374,7 @@ function renderTimeline(tripId) {
   });
   if (currentGroup.length > 0) groups.push(currentGroup);
 
-  groups.forEach(group => {
+  groups.forEach((group, groupIndex) => {
     const firstP = group[0];
     let dateObj = firstP.taken_at ? new Date(firstP.taken_at) : null;
     let tags = '';
@@ -380,9 +399,15 @@ function renderTimeline(tripId) {
           : `<div class="timeline-photo-placeholder">🖼️<span>${gp.original_filename}</span></div>`
         }
         ${group.length > 1 ? `<div class="slide-counter">${i + 1} / ${group.length}</div>` : ''}
-        <button class="photo-delete-btn slide-delete-btn" data-photo-id="${gp.id}" data-trip-id="${gp.trip_id}" title="사진 삭제">🗑</button>
+        <button class="photo-action-btn slide-delete-btn" data-photo-id="${gp.id}" data-trip-id="${gp.trip_id}" title="사진 삭제">🗑</button>
+        ${group.length > 1 ? `<button class="photo-action-btn slide-split-btn" data-photo-id="${gp.id}" data-trip-id="${gp.trip_id}" title="사진 떼어내기">✂️</button>` : ''}
       </div>
     `).join('');
+
+    const prevGroup = groupIndex > 0 ? groups[groupIndex - 1] : null;
+    const mergeUpBtn = prevGroup 
+      ? `<button class="timeline-merge-up-btn" data-current-ids="${group.map(p=>p.id).join(',')}" data-prev-ids="${prevGroup.map(p=>p.id).join(',')}" data-trip-id="${tripId}" title="위 그룹과 묶기">🔗 묶기</button>` 
+      : '';
 
     let cardHtml = `
       <div class="timeline-item">
@@ -392,6 +417,7 @@ function renderTimeline(tripId) {
           <div class="timeline-card-footer">
             ${dateObj ? `<span class="timeline-date">🕐 ${dateObj.toLocaleDateString('ko-KR', { month: 'long', day: 'numeric', hour: '2-digit', minute: '2-digit' })}</span>` : ''}
             <div class="timeline-tags">${tags}</div>
+            ${mergeUpBtn}
           </div>
         </div>
       </div>`;
@@ -613,8 +639,16 @@ function attachEventListeners() {
   });
 
   // ── 사진 삭제 버튼 ────────────────────────────────────
-  document.querySelectorAll('.photo-delete-btn').forEach(btn => {
+  document.querySelectorAll('.photo-delete-btn, .slide-delete-btn').forEach(btn => {
     btn.addEventListener('click', handlePhotoDelete);
+  });
+
+  // ── v2.6 수동 묶음/분리 버튼 ──────────────────────────────
+  document.querySelectorAll('.slide-split-btn').forEach(btn => {
+    btn.addEventListener('click', handlePhotoSplit);
+  });
+  document.querySelectorAll('.timeline-merge-up-btn').forEach(btn => {
+    btn.addEventListener('click', handleMergeUp);
   });
 
   // ── 미분류 서랍 토글 ──────────────────────────────────
@@ -908,6 +942,66 @@ async function handlePhotoDelete(e) {
   } catch (err) {
     console.error('[deletePhoto 실패]', err);
     showToast(`❌ 사진 삭제 실패: ${err.message}`, true);
+  }
+}
+
+/* ── v2.6 사진 떼어내기 (Split) 핸들러 ── */
+async function handlePhotoSplit(e) {
+  e.stopPropagation();
+  const photoId = e.currentTarget.dataset.photoId;
+  const tripId = e.currentTarget.dataset.tripId;
+  
+  const trip = state.trips.find(t => t.id === tripId);
+  if (!trip) return;
+  
+  const newGroupId = `split-${Date.now()}-${Math.floor(Math.random()*1000)}`;
+  
+  const currentOverrides = trip.metadata?.group_overrides || {};
+  const newOverrides = { ...currentOverrides, [photoId]: newGroupId };
+  
+  try {
+    const updatedTrip = await updateTrip(tripId, {
+      metadata: { ...trip.metadata, group_overrides: newOverrides }
+    });
+    const idx = state.trips.findIndex(t => t.id === tripId);
+    if (idx !== -1) state.trips[idx] = updatedTrip;
+    
+    showToast('✂️ 선택한 사진을 떼어냈습니다.');
+    renderApp(); // 전체 렌더 및 이벤트 바인딩
+  } catch (err) {
+    showToast(`❌ 떼어내기 실패: ${err.message}`, true);
+  }
+}
+
+/* ── v2.6 위 그룹과 묶기 (Merge Up) 핸들러 ── */
+async function handleMergeUp(e) {
+  e.stopPropagation();
+  const currentIds = e.currentTarget.dataset.currentIds.split(',');
+  const prevIds = e.currentTarget.dataset.prevIds.split(',');
+  const tripId = e.currentTarget.dataset.tripId;
+  
+  const trip = state.trips.find(t => t.id === tripId);
+  if (!trip) return;
+  
+  const newGroupId = `merge-${Date.now()}-${Math.floor(Math.random()*1000)}`;
+  
+  const currentOverrides = trip.metadata?.group_overrides || {};
+  const newOverrides = { ...currentOverrides };
+  
+  currentIds.forEach(id => newOverrides[id] = newGroupId);
+  prevIds.forEach(id => newOverrides[id] = newGroupId);
+  
+  try {
+    const updatedTrip = await updateTrip(tripId, {
+      metadata: { ...trip.metadata, group_overrides: newOverrides }
+    });
+    const idx = state.trips.findIndex(t => t.id === tripId);
+    if (idx !== -1) state.trips[idx] = updatedTrip;
+    
+    showToast('🔗 위 그룹과 하나로 묶었습니다.');
+    renderApp(); // 전체 렌더 및 이벤트 바인딩
+  } catch (err) {
+    showToast(`❌ 묶기 실패: ${err.message}`, true);
   }
 }
 
