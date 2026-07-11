@@ -1,23 +1,23 @@
 # Trip Project — 현재 상태판 (Status Board)
 
-*최종 업데이트: 2026-07-10 by Agent B*
+*최종 업데이트: 2026-07-11 by Master Agent*
 
 ---
 
-## 📌 현재 개발 단계: v2.4 (기존 여행 사진 추가 API 및 Vision 태그 개편 완료)
+## 📌 현재 개발 단계: v2.7 (목적지 UI 추가 및 EXIF 데이터 보존 아키텍처 적용 완료)
 
 ### 1. 에이전트별 상태 및 작업 히스토리
 
 | 에이전트 | 최근 작업 ID | 최신 상태 | 주요 작업 내용 |
-| **Master Agent** | `HOTFIX_002` | ✅ 완료 | v2.2 배포 설정 (프론트엔드/백엔드 서버 통합) 및 v2.3 클라이언트 사이드 대용량 이미지 압축 최적화 로직 구현 |
-| **Agent A (Frontend)** | `TASK_AgentA_011` | ✅ 완료 | 타임라인 Day 그룹화 적용, 카테고리 태그 뱃지 렌더링 추가, 기존 여행에 사진 추가 연동 |
-| **Agent B (Backend)** | `TASK_AgentB_004` | ✅ 완료 | v2.4 VisionTags category 개편, POST /api/trips/:id/photos 신규 엔드포인트 구현 |
-| **Agent C (DevOps)** | `TASK_AgentC_003` | ✅ 완료 | 프론트엔드 최신 수정 사항(타임라인 Day 분리, 카테고리 뱃지, 기존 여행 사진 추가 연동) 통합 테스트 및 서버 상태 점검 완료 |
+| **Master Agent** | `HOTFIX_003` | ✅ 완료 | v2.7 프론트엔드 이미지 압축 시 EXIF 2026년 오기입 버그 수정을 위한 원본 EXIF Chunk 전송 아키텍처 고안 및 적용 |
+| **Agent A (Frontend)** | `TASK_AgentA_013` | ✅ 완료 | v2.5 3분 이내 사진 슬라이더 UI (스크롤 스냅) 적용, v2.6 수동 묶기/떼어내기 UX 추가, v2.7 목적지(Destination) 인라인 수정 UI 반영 |
+| **Agent B (Backend)** | `TASK_AgentB_005` | ✅ 완료 | v2.7 `uploadMulti.fields`를 이용해 `photos`와 `exif_chunks` 분리 수신 및 `exifService` 최우선 적용 처리 |
+| **Agent C (DevOps)** | `TASK_AgentC_004` | ⏳ 대기중 | v2.5 ~ v2.7 모든 수정 사항 Git 커밋 및 Render 자동 배포 대기 중 |
 | **Agent Test (임시)** | `TASK_AgentTest_001` | ✅ 완료 | Vision API 비교 테스트용 독립 로컬 서버(PORT 8080) 구축 |
 
 ### 2. 현재 활성화된 로컬 서버 주소
-- 프론트엔드: http://localhost:3000 (Agent C 기동 중)
-- 백엔드: http://localhost:4000 (Agent C 기동 중)
+- 프론트엔드: http://localhost:3000 (Agent C 기동 필요)
+- 백엔드: http://localhost:4000 (Agent C 기동 필요)
 
 ---
 
@@ -26,27 +26,24 @@
 - DB: Supabase (연동 완료)
 - Git Branch: `master` (최신 업데이트 중)
 
-### Agent B 구현 완료 파일
+### Master/Agent 최근 구현 완료 파일
 | 파일 | 상태 |
 |---|---|
-| `backend/src/index.ts` | ✅ 완료 (v2.4 로그 업데이트) |
-| `backend/src/config/supabase.ts` | ✅ 완료 |
-| `backend/src/services/exifService.ts` | ✅ 완료 |
-| `backend/src/services/visionService.ts` | ✅ 완료 (v2.4 category 개편) |
-| `backend/src/types/index.ts` | ✅ 완료 (v2.4 VisionTags 개편) |
-| `backend/src/routes/photos.ts` | ✅ 완료 (v2.1 삭제 API 포함) |
-| `backend/src/routes/trips.ts` | ✅ 완료 (v2.4 /:id/photos 추가) |
-| `backend/SUPABASE_SCHEMA.sql` | ✅ 완료 (trip_id NOT NULL) |
+| `frontend/app.js` | ✅ 완료 (v2.5 슬라이더, v2.6 수동 묶기/분리 핸들러, v2.7 목적지 수정 및 EXIF chunk 추출 로직) |
+| `frontend/style.css` | ✅ 완료 (v2.5 `.photo-slider`, v2.6 제어 버튼, v2.7 목적지 텍스트 스타일) |
+| `backend/src/routes/trips.ts` | ✅ 완료 (v2.7 EXIF chunk 파싱 로직 추가) |
 
 ---
 
 ## 📝 To-Do List (앞으로 해야 할 일)
 - [x] 백엔드 v1.0 기능 구현 및 환경 구성 완료
 - [x] 프론트엔드 v1.0 책 테마 UI 및 통신 연동 완료
-- [x] v2.0 - 백엔드: 다중 사진 업로드 시 OpenAI 기반 자동 여행 생성 로직 구현
-- [x] v2.0 - 프론트엔드: 다중 업로드 UI, 타임라인, 미분류 서랍, 인라인 에디터 구현
-- [x] v2.1 - 백엔드/프론트엔드: DB 데이터 및 스토리지 연쇄 삭제 기능 완벽 구현
-- [x] v2.2 - 배포: Render 연동 및 프론트/백엔드 단일 포트(4000) 통합 배포 완료
-- [x] v2.3 - 성능 최적화: 브라우저 단 이미지 다중 압축 전송 처리 완료
-- [x] v2.4 - 기존 여행 사진 추가 API 및 Vision 태그 개편 완료 (TASK_AgentB_004)
-- [ ] v2.5+ - 새 기능 논의 (인터랙티브 지도, AI 기반 일기 자동 작성 등)
+- [x] v2.0 - 다중 업로드 및 AI 자동 여행 생성
+- [x] v2.1 - 연쇄 삭제 및 Storage 파일 삭제
+- [x] v2.2 - 단일 포트 통합 배포 (Render)
+- [x] v2.3 - 브라우저 단 대용량 이미지 다중 압축
+- [x] v2.4 - VisionTags 개편 및 기존 여행 사진 추가 연동
+- [x] v2.5 - 타임라인 3분 이내 근접 사진 가로 슬라이더(Carousel) UI 적용
+- [x] v2.6 - 사용자 수동 사진 그룹 묶기 / 떼어내기 (Merge/Split) 직관적 UX 적용
+- [x] v2.7 - 목적지(Destination) 직접 입력 기능 추가 및 EXIF 압축 시 2026년 오기록 버그 해결 (Chunk 분리 전송)
+- [ ] v2.8+ - 새 기능 논의 (인터랙티브 지도 뷰, AI 기반 일기 자동 작성 등)

@@ -517,6 +517,8 @@ function renderTripPage(trip, indexNumber) {
 
   const descText = trip.description || '';
   const descPlaceholder = '날짜나 기간을 입력하세요 (예: 6월 15일 ~ 6월 17일)';
+  const destText = trip.metadata?.destination || '';
+  const destPlaceholder = '목적지를 입력하세요 (예: 제주도, 파리)';
 
   return `
     <div class="page" data-page="${trip.id}" id="page-${trip.id}">
