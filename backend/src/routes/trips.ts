@@ -772,7 +772,6 @@ tripsRouter.post('/:id/diary', async (req: Request<{ id: string }>, res: Respons
         const tags = p.vision_tags as VisionTags | null;
         if (tags) {
           const parts = [];
-          if (tags.environment) parts.push(`환경: ${tags.environment}`);
           if (tags.category) parts.push(`카테고리: ${tags.category}`);
           if (parts.length > 0) summary += ` | ${parts.join(', ')}`;
         }

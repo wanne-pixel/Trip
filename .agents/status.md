@@ -12,7 +12,7 @@
 | **Master Agent** | `HOTFIX_004` | ✅ 완료 | v2.8 이전 데이터들의 누락된 `start_date` 강제 생성용 DB 마이그레이션 스크립트 작성 및 실행 |
 | **Agent A (Frontend)** | `TASK_AgentA_015` | ✅ 완료 | v2.9 AI 일기 쓰기 버튼 추가 및 API 통신, 일기 UI 종이책 스타일 적용 |
 | **Agent B (Backend)** | `TASK_AgentB_006` | ✅ 완료 | v2.8 AI 기반 여행 일기 자동 작성 API (`POST /api/trips/:id/diary`) 구현 |
-| **Agent C (DevOps)** | `TASK_AgentC_007` | ✅ 완료 | v3.0 AI 여행 일기 자동 작성 기능 배포 코드 GitHub 푸시 및 Render 배포 트리거 완료 |
+| **Agent C (DevOps)** | `TASK_AgentC_008` | ✅ 완료 | Render 배포 실패 핫픽스 (TS2339 environment 속성 에러) 수정 및 재배포 푸시 완료 |
 | **Agent Test (임시)** | `TASK_AgentTest_001` | ✅ 완료 | Vision API 비교 테스트용 독립 로컬 서버(PORT 8080) 구축 |
 
 ### 2. 현재 활성화된 로컬 서버 주소
