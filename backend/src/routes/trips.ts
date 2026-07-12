@@ -353,13 +353,13 @@ ${metaSummary}
 
 // ── 내부 헬퍼: EXIF taken_at 배열로 여행 날짜 범위 문자열 계산 (v2.1) ──
 // 예시: "6월 15일 ~ 6월 17일 (2박 3일)", "6월 15일 (당일치기)", "날짜 정보 없음"
-function calculateTripDateDescription(takenAts: (string | null)[]): string {
+function calculateTripDateInfo(takenAts: (string | null)[]): { description: string; startDate: string | null } {
   const validDates: Date[] = takenAts
     .filter((t): t is string => typeof t === 'string' && t.length > 0)
     .map((t) => new Date(t))
     .filter((d) => !isNaN(d.getTime()));
 
-  if (validDates.length === 0) return '날짜 정보 없음';
+  if (validDates.length === 0) return { description: '날짜 정보 없음', startDate: null };
 
   const minDate = new Date(Math.min(...validDates.map((d) => d.getTime())));
   const maxDate = new Date(Math.max(...validDates.map((d) => d.getTime())));
@@ -380,7 +380,7 @@ function calculateTripDateDescription(takenAts: (string | null)[]): string {
     minDate.getDate() === maxDate.getDate();
 
   if (isSameDay) {
-    return `${minStr} (당일치기)`;
+    return { description: `${minStr} (당일치기)`, startDate: minDate.toISOString() };
   }
 
   // 박수 계산: 자정 기준으로 날짜 차이
@@ -391,7 +391,7 @@ function calculateTripDateDescription(takenAts: (string | null)[]): string {
   const nights = diffDays;
   const days = diffDays + 1;
 
-  return `${minStr} ~ ${maxStr} (${nights}박 ${days}일)`;
+  return { description: `${minStr} ~ ${maxStr} (${nights}박 ${days}일)`, startDate: minDate.toISOString() };
 }
 
 tripsRouter.post(
@@ -454,19 +454,20 @@ tripsRouter.post(
 
       // ── Step 3-b: EXIF taken_at 배열로 날짜 범위 description 계산 (v2.1) ──
       const takenAts = processedFiles.map(({ exif }) => exif.taken_at);
-      const tripDescription = calculateTripDateDescription(takenAts);
+      const dateInfo = calculateTripDateInfo(takenAts);
 
       // ── Step 4: trips 테이블에 새 여행 INSERT ──
       const { data: newTrip, error: tripError } = await supabase
         .from('trips')
         .insert({
           title: tripInfo.title,
-          description: tripDescription,   // v2.1: AI 생성 X → 날짜 범위 자동 계산
+          description: dateInfo.description,   // v2.1: AI 생성 X → 날짜 범위 자동 계산
           theme: tripInfo.theme,
           metadata: {
             auto_generated: true,
             photo_count: files.length,
             generated_at: new Date().toISOString(),
+            start_date: dateInfo.startDate,
           },
         })
         .select()
@@ -725,3 +726,110 @@ tripsRouter.post(
     }
   }
 );
+
+// ─────────────────────────────────────────────
+// POST /api/trips/:id/diary — AI 기반 여행 일기 자동 생성
+// ─────────────────────────────────────────────
+tripsRouter.post('/:id/diary', async (req: Request<{ id: string }>, res: Response) => {
+  const { id } = req.params;
+
+  try {
+    // 1. 여행 정보 및 사진 목록 조회 (taken_at 오름차순)
+    const { data: tripData, error: tripError } = await supabase
+      .from('trips')
+      .select('*')
+      .eq('id', id)
+      .single();
+
+    if (tripError || !tripData) {
+      const response: ApiResponse<never> = { success: false, error: '여행 정보를 찾을 수 없습니다.' };
+      return res.status(404).json(response);
+    }
+
+    const { data: photos, error: photosError } = await supabase
+      .from('photos')
+      .select('*')
+      .eq('trip_id', id)
+      .order('taken_at', { ascending: true });
+
+    if (photosError) {
+      const response: ApiResponse<never> = { success: false, error: '사진 목록을 불러오는 데 실패했습니다.' };
+      return res.status(500).json(response);
+    }
+
+    if (!photos || photos.length === 0) {
+      const response: ApiResponse<never> = { success: false, error: '일기를 생성할 사진이 없습니다.' };
+      return res.status(400).json(response);
+    }
+
+    // 2. 프롬프트 문자열 구성
+    const trip = tripData as Trip;
+    const photoSummaries = (photos as Photo[])
+      .map((p, idx) => {
+        let summary = `[사진 ${idx + 1}] 목적지/파일명: ${p.original_filename}`;
+        if (p.taken_at) summary += ` | 촬영시각: ${p.taken_at}`;
+        
+        const tags = p.vision_tags as VisionTags | null;
+        if (tags) {
+          const parts = [];
+          if (tags.environment) parts.push(`환경: ${tags.environment}`);
+          if (tags.category) parts.push(`카테고리: ${tags.category}`);
+          if (parts.length > 0) summary += ` | ${parts.join(', ')}`;
+        }
+        return summary;
+      })
+      .join('\n');
+
+    const prompt = `다음은 "${trip.title}" 여행에서 촬영된 사진들의 타임라인 정보입니다:
+
+${photoSummaries}
+
+이 타임라인 데이터를 바탕으로, 이 여행의 과정과 감정을 담아 매우 감성적이고 아름다우며 성찰적인 여행 일기를 한국어로 작성해주세요.
+사진에 담긴 환경이나 카테고리 정보와 시간의 흐름을 자연스럽게 일기에 녹여주세요.
+응답은 다른 인사말 없이 일기 본문 텍스트만 출력해주세요.`;
+
+    // 3. OpenAI API 호출
+    if (!process.env.OPENAI_API_KEY) {
+      const response: ApiResponse<never> = { success: false, error: 'OpenAI API 키가 설정되지 않았습니다.' };
+      return res.status(500).json(response);
+    }
+
+    const client = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+    const aiResponse = await client.chat.completions.create({
+      model: 'gpt-4o-mini',
+      messages: [
+        { role: 'system', content: '당신은 감수성이 풍부하고 시적인 표현을 잘하는 최고의 여행 작가입니다.' },
+        { role: 'user', content: prompt }
+      ],
+      max_tokens: 1500,
+      temperature: 0.7,
+    });
+
+    const diary = aiResponse.choices[0]?.message?.content?.trim() || '일기 생성에 실패했습니다.';
+
+    // 4. metadata에 저장 (Rule 1: 기존 JSONB 데이터와 병합)
+    const existingMetadata = (trip.metadata as Record<string, any>) || {};
+    const mergedMetadata = {
+      ...existingMetadata,
+      diary,
+      diary_generated_at: new Date().toISOString(),
+    };
+
+    const { error: updateError } = await supabase
+      .from('trips')
+      .update({ metadata: mergedMetadata })
+      .eq('id', id);
+
+    if (updateError) {
+      const response: ApiResponse<never> = { success: false, error: '일기를 저장하는 중 오류가 발생했습니다.' };
+      return res.status(500).json(response);
+    }
+
+    // 5. 응답 반환
+    return res.json({ success: true, data: { diary } });
+
+  } catch (err) {
+    const response: ApiResponse<never> = { success: false, error: (err as Error).message };
+    return res.status(500).json(response);
+  }
+});

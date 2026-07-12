@@ -117,13 +117,16 @@ async function deletePhoto(photoId) {
 /* ──────────────────────────────────────────────────────────
    2. 상태 관리
    ────────────────────────────────────────────────────────── */
-let state = {
+const state = {
   trips: [],
-  currentPage: 'cover',   // 'cover' | 'index' | trip.id
-  tripPhotos: {},          // { [trip_id]: Photo[] }
+  currentPage: 'cover',
+  tripPhotos: {}, // { [tripId]: Photo[] } (v2.0 지연 로딩)
+  drawerOpen: {}, // { [tripId]: boolean }
   isLoading: false,
   loadingMsg: '',
-  drawerOpen: {},          // { [trip_id]: boolean } — 미분류 서랍 열림 여부
+  mapInstance: null, // v2.8 지도 인스턴스
+  isEditMode: false,
+  selectedDay: {}
 };
 
 /* ──────────────────────────────────────────────────────────
@@ -217,6 +220,7 @@ async function loadTripPhotos(tripId) {
   }
 }
 
+
 function refreshPhotoSection(tripId) {
   const timelineEl = document.getElementById(`timeline-${tripId}`);
   const drawerEl = document.getElementById(`drawer-${tripId}`);
@@ -234,7 +238,10 @@ function renderHeader(type, tripId) {
     actionBtn = `<button class="header-btn text-btn" id="btnGoCover">표지로</button>`;
   } else if (type === 'trip') {
     actionBtn = `<button class="header-btn text-btn" id="btnGoTOC">목차로</button>`;
-    rightBtn = `<button class="header-btn text-btn delete-trip-btn" id="btnDeleteTrip" data-trip-id="${tripId}" title="여행 삭제">🗑 삭제</button>`;
+    rightBtn = `
+      <button class="header-btn text-btn map-view-btn" data-trip-id="${tripId}" title="지도 보기" style="margin-right:8px;">🗺️ 지도 보기</button>
+      <button class="header-btn text-btn delete-trip-btn" id="btnDeleteTrip" data-trip-id="${tripId}" title="여행 삭제">🗑 삭제</button>
+    `;
   }
   return `
     <header class="app-header">
@@ -260,23 +267,53 @@ function renderCoverPage() {
 
 function renderTOCPage() {
   const groups = {};
-  state.trips.forEach((trip, idx) => {
-    const year = new Date(trip.created_at).getFullYear() + '년';
-    if (!groups[year]) groups[year] = [];
-    groups[year].push({ trip, index: idx + 1 });
+
+  // 1. 날짜 기준 오름차순 정렬 (과거 -> 최신)
+  const sortedTrips = [...state.trips].sort((a, b) => {
+    let dateA = a.created_at;
+    let dateB = b.created_at;
+    
+    if (a.metadata?.start_date) dateA = a.metadata.start_date;
+    else if (a.title.match(/(20\\d{2})/)) dateA = a.title.match(/(20\\d{2})/)[1] + "-01-01";
+    
+    if (b.metadata?.start_date) dateB = b.metadata.start_date;
+    else if (b.title.match(/(20\\d{2})/)) dateB = b.title.match(/(20\\d{2})/)[1] + "-01-01";
+    
+    return new Date(dateA).getTime() - new Date(dateB).getTime();
   });
 
-  const groupKeys = Object.keys(groups).sort((a, b) => b.localeCompare(a));
+  // 2. 연도별 그룹화 (start_date 또는 제목 연도 우선)
+  sortedTrips.forEach((trip, idx) => {
+    let year = new Date(trip.created_at).getFullYear();
+    if (trip.metadata?.start_date) {
+      year = new Date(trip.metadata.start_date).getFullYear();
+    } else {
+      const yearMatch = trip.title.match(/(20\\d{2})/);
+      if (yearMatch) year = parseInt(yearMatch[1], 10);
+    }
+    const yearStr = year + '년';
+
+    if (!groups[yearStr]) groups[yearStr] = [];
+    groups[yearStr].push({ trip, index: idx + 1 });
+  });
+
+  // 3. 그룹 연도 오름차순 정렬 (과거 연도 -> 최신 연도)
+  const groupKeys = Object.keys(groups).sort((a, b) => a.localeCompare(b));
   let tocHTML = '';
 
   groupKeys.forEach(year => {
     tocHTML += `<div class="toc-group"><div class="toc-year-title">${year}</div><div class="toc-list">`;
     groups[year].forEach(item => {
-      const loc = item.trip.metadata?.location || '어딘가';
+      const loc = item.trip.metadata?.destination || item.trip.metadata?.location || '어딘가';
       let titleDisplay = item.trip.title;
       if (titleDisplay.startsWith(loc)) titleDisplay = titleDisplay.substring(loc.length).trim();
       if (titleDisplay.startsWith('—') || titleDisplay.startsWith('-')) titleDisplay = titleDisplay.substring(1).trim();
-      const fullTitle = `${loc} — ${titleDisplay}`;
+      
+      const fullTitle = `
+        <span class="inline-editable-toc-dest" data-trip-id="${item.trip.id}" title="클릭하여 장소 수정" style="color:var(--color-primary); font-weight:600; cursor:pointer;">${loc}</span>
+        <span style="opacity:0.5; margin:0 4px;">—</span>
+        ${titleDisplay}
+      `;
       tocHTML += `
         <div class="toc-item" data-trip-id="${item.trip.id}">
           <span class="toc-item-title">(${item.index}) ${fullTitle}</span>
@@ -309,6 +346,7 @@ function renderTOCPage() {
           ${tocHTML}
         </div>
         <!-- v2.0: 다중 사진 업로드 FAB + 드래그앤드롭 -->
+        ${state.isEditMode ? `
         <div class="upload-fab-zone" id="uploadFabZone">
           <div class="upload-fab-dropzone" id="uploadDropZone">
             <input type="file" id="multiPhotoInput" multiple accept="image/*" style="display:none;">
@@ -319,6 +357,7 @@ function renderTOCPage() {
             </label>
           </div>
         </div>
+        ` : ''}
       </div>
       <div class="page-number">TOC.</div>
     </div>
@@ -343,10 +382,54 @@ function renderTimeline(tripId) {
     return `<div class="photo-section-empty">📸 타임라인에 분류된 사진이 없습니다.</div>`;
   }
 
-  let html = '<div class="timeline-list">';
-  let currentDay = 0;
-  let currentDayString = null;
-  let unknownHtml = '';
+  // 일자별 분리
+  let dayCounter = 0;
+  let lastDateString = null;
+  const dayGroups = [];
+  const unknownGroup = [];
+
+  classified.forEach(p => {
+    if (!p.taken_at) {
+      unknownGroup.push(p);
+    } else {
+      const dateObj = new Date(p.taken_at);
+      const dateString = dateObj.toLocaleDateString('ko-KR', { year: 'numeric', month: '2-digit', day: '2-digit' });
+      const displayDate = dateObj.toLocaleDateString('ko-KR', { month: 'long', day: 'numeric' });
+      if (dateString !== lastDateString) {
+        dayCounter++;
+        lastDateString = dateString;
+        dayGroups.push({ dayIndex: dayCounter, displayDate, photos: [] });
+      }
+      dayGroups[dayGroups.length - 1].photos.push(p);
+    }
+  });
+
+  let tabsHtml = '<div class="day-tabs">';
+  dayGroups.forEach(dg => {
+    const isActive = (state.selectedDay[tripId] || 1) === dg.dayIndex ? 'active' : '';
+    tabsHtml += `<button class="day-tab ${isActive}" onclick="selectDay('${tripId}', ${dg.dayIndex})">Day ${dg.dayIndex}</button>`;
+  });
+  if (unknownGroup.length > 0) {
+    const isActive = (state.selectedDay[tripId] || 1) === 'unknown' ? 'active' : '';
+    tabsHtml += `<button class="day-tab ${isActive}" onclick="selectDay('${tripId}', 'unknown')">알 수 없음</button>`;
+  }
+  tabsHtml += '</div>';
+
+  let activeGroupPhotos = [];
+  const selected = state.selectedDay[tripId] || 1;
+  if (selected === 'unknown') {
+    activeGroupPhotos = unknownGroup;
+  } else {
+    const targetDay = dayGroups.find(dg => dg.dayIndex === selected);
+    if (targetDay) activeGroupPhotos = targetDay.photos;
+    else if (dayGroups.length > 0) activeGroupPhotos = dayGroups[0].photos;
+  }
+
+  if (activeGroupPhotos.length === 0) {
+    return tabsHtml + `<div class="photo-section-empty">이 날짜에 해당하는 사진이 없습니다.</div>`;
+  }
+
+  let html = tabsHtml + '<div class="timeline-list">';
 
   // v2.6: 수동 묶음/분리 메타데이터 가져오기
   const trip = state.trips.find(t => t.id === tripId);
@@ -356,7 +439,7 @@ function renderTimeline(tripId) {
   const groups = [];
   let currentGroup = [];
 
-  classified.forEach(p => {
+  activeGroupPhotos.forEach(p => {
     if (currentGroup.length === 0) {
       currentGroup.push(p);
       return;
@@ -369,13 +452,10 @@ function renderTimeline(tripId) {
     let shouldGroup = false;
 
     if (pGroupId && lastPGroupId && pGroupId === lastPGroupId) {
-      // 강제 묶음: 같은 수동 그룹 ID를 가짐
       shouldGroup = true;
     } else if (pGroupId || lastPGroupId) {
-      // 강제 분리: 둘 중 하나라도 그룹 ID가 있거나, 서로 다름
       shouldGroup = false;
     } else {
-      // 기본 규칙: 3분 이내
       if (p.taken_at && lastP.taken_at) {
         const diffMs = new Date(p.taken_at).getTime() - new Date(lastP.taken_at).getTime();
         shouldGroup = (diffMs <= 3 * 60 * 1000);
@@ -393,12 +473,13 @@ function renderTimeline(tripId) {
   });
   if (currentGroup.length > 0) groups.push(currentGroup);
 
+  const isEdit = state.isEditMode;
+
   groups.forEach((group, groupIndex) => {
     const firstP = group[0];
     let dateObj = firstP.taken_at ? new Date(firstP.taken_at) : null;
     let tags = '';
 
-    // 태그는 그룹의 첫 번째 사진을 기준으로 표시
     if (firstP.vision_tags) {
       if (firstP.vision_tags.category) {
         tags = `<span class="vtag vtag-category">${categoryLabel(firstP.vision_tags.category)}</span>`;
@@ -418,17 +499,17 @@ function renderTimeline(tripId) {
           : `<div class="timeline-photo-placeholder">🖼️<span>${gp.original_filename}</span></div>`
         }
         ${group.length > 1 ? `<div class="slide-counter">${i + 1} / ${group.length}</div>` : ''}
-        <button class="photo-action-btn slide-delete-btn" data-photo-id="${gp.id}" data-trip-id="${gp.trip_id}" title="사진 삭제">🗑</button>
-        ${group.length > 1 ? `<button class="photo-action-btn slide-split-btn" data-photo-id="${gp.id}" data-trip-id="${gp.trip_id}" title="사진 떼어내기">✂️</button>` : ''}
+        ${isEdit ? `<button class="photo-action-btn slide-delete-btn" data-photo-id="${gp.id}" data-trip-id="${gp.trip_id}" title="사진 삭제">🗑</button>` : ''}
+        ${(isEdit && group.length > 1) ? `<button class="photo-action-btn slide-split-btn" data-photo-id="${gp.id}" data-trip-id="${gp.trip_id}" title="사진 떼어내기">✂️</button>` : ''}
       </div>
     `).join('');
 
     const prevGroup = groupIndex > 0 ? groups[groupIndex - 1] : null;
-    const mergeUpBtn = prevGroup 
+    const mergeUpBtn = (isEdit && prevGroup) 
       ? `<button class="timeline-merge-up-btn" data-current-ids="${group.map(p=>p.id).join(',')}" data-prev-ids="${prevGroup.map(p=>p.id).join(',')}" data-trip-id="${tripId}" title="위 그룹과 묶기">🔗 묶기</button>` 
       : '';
 
-    let cardHtml = `
+    html += `
       <div class="timeline-item">
         <div class="timeline-dot"></div>
         <div class="timeline-card">
@@ -440,24 +521,7 @@ function renderTimeline(tripId) {
           </div>
         </div>
       </div>`;
-
-    if (!dateObj) {
-      unknownHtml += cardHtml;
-    } else {
-      const dateString = dateObj.toLocaleDateString('ko-KR', { year: 'numeric', month: '2-digit', day: '2-digit' });
-      if (currentDayString !== dateString) {
-        currentDay++;
-        currentDayString = dateString;
-        const displayDate = dateObj.toLocaleDateString('ko-KR', { month: 'long', day: 'numeric' });
-        html += `<div class="timeline-day-header"><h3>Day ${currentDay} <span>(${displayDate})</span></h3></div>`;
-      }
-      html += cardHtml;
-    }
   });
-
-  if (unknownHtml) {
-    html += `<div class="timeline-day-header"><h3>알 수 없음</h3></div>${unknownHtml}`;
-  }
 
   html += '</div>';
   return html;
@@ -558,18 +622,36 @@ function renderTripPage(trip, indexNumber) {
             </div>
           </div>
 
+          ${state.isEditMode ? `
           <div class="add-photo-bar">
             <input type="file" id="addPhotos-${trip.id}" multiple accept="image/*" style="display:none;" data-trip-id="${trip.id}">
             <label for="addPhotos-${trip.id}" class="add-photo-btn">
               <span class="icon">➕</span> 이 여행에 사진 추가하기
             </label>
           </div>
+          ` : ''}
 
           <!-- 타임라인 섹션 -->
-          <div class="section-label">📅 타임라인</div>
+          <div class="section-label" style="display:flex; justify-content:space-between; align-items:center;">
+            <span>📅 타임라인</span>
+            <button class="header-btn text-btn edit-mode-toggle-btn" onclick="toggleEditMode()" style="background:var(--color-surface-alt);">
+              ${state.isEditMode ? '편집 모드 종료' : '편집 모드 켜기'}
+            </button>
+          </div>
           <div id="timeline-${trip.id}">
             ${renderTimeline(trip.id)}
           </div>
+
+          <!-- AI 일기 섹션 -->
+          ${!trip.metadata?.diary ? `
+            <div style="text-align:center; margin: 24px 0;">
+              <button class="btn-write-diary" data-trip-id="${trip.id}">✍️ AI 일기 쓰기</button>
+            </div>
+          ` : `
+            <div class="diary-section">
+              ${trip.metadata.diary.replace(/\n/g, '<br>')}
+            </div>
+          `}
 
           <!-- 미분류 사진 서랍 -->
           <div class="drawer-section">
@@ -609,6 +691,19 @@ function renderApp() {
     if (html) pagesHTML += html.replace('class="page', `style="z-index:${zIndex};" class="page`);
   });
 
+  // v2.8 지도 모달 구조 추가
+  const mapModalHTML = `
+    <div class="map-modal-overlay" id="mapModalOverlay">
+      <div class="map-modal-content">
+        <div class="map-header">
+          <div class="map-title">📍 여행 경로</div>
+          <button class="map-close-btn" id="mapCloseBtn">✖</button>
+        </div>
+        <div id="tripMapContainer"></div>
+      </div>
+    </div>
+  `;
+
   root.innerHTML = `
     <div class="book-container">
       <div class="book">
@@ -616,6 +711,7 @@ function renderApp() {
         ${pagesHTML}
       </div>
     </div>
+    ${mapModalHTML}
   `;
 
   updatePageFlips();
@@ -625,6 +721,16 @@ function renderApp() {
 /* ──────────────────────────────────────────────────────────
    6. 이벤트 핸들러
    ────────────────────────────────────────────────────────── */
+window.selectDay = function(tripId, dayIndex) {
+  state.selectedDay[tripId] = dayIndex;
+  renderApp();
+};
+
+window.toggleEditMode = function() {
+  state.isEditMode = !state.isEditMode;
+  renderApp();
+};
+
 function attachEventListeners() {
   // 표지 클릭
   const coverPage = document.getElementById('page-cover');
@@ -638,11 +744,50 @@ function attachEventListeners() {
     pageIndex.querySelectorAll('.toc-item').forEach(item => {
       item.addEventListener('click', () => flipToPage(item.dataset.tripId));
     });
+    
+    // 목차 내 목적지 인라인 편집
+    pageIndex.querySelectorAll('.inline-editable-toc-dest').forEach(el => {
+      el.addEventListener('click', async (e) => {
+        e.stopPropagation();
+        const tripId = el.dataset.tripId;
+        const trip = state.trips.find(t => t.id === tripId);
+        const currentLoc = trip.metadata?.destination || trip.metadata?.location || '';
+        const newLoc = window.prompt('장소를 입력하세요 (예: 제주도, 파리):', currentLoc);
+        if (newLoc !== null && newLoc.trim() !== currentLoc) {
+          try {
+            const updated = await patchTripMetadata(tripId, { metadata: { ...trip.metadata, destination: newLoc.trim() } });
+            trip.metadata = updated.metadata;
+            renderApp();
+            showToast('✅ 장소가 수정되었습니다.');
+          } catch(err) {
+            showToast(`❌ 수정 실패: ${err.message}`, true);
+          }
+        }
+      });
+    });
   }
 
   // 네비게이션
   document.querySelectorAll('#btnGoCover').forEach(btn => btn.addEventListener('click', () => flipToPage('cover')));
   document.querySelectorAll('#btnGoTOC').forEach(btn => btn.addEventListener('click', () => flipToPage('index')));
+
+  // 지도 보기 (v2.8)
+  document.querySelectorAll('.map-view-btn').forEach(btn => {
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      showTripMap(btn.dataset.tripId);
+    });
+  });
+  const mapCloseBtn = document.getElementById('mapCloseBtn');
+  if (mapCloseBtn) {
+    mapCloseBtn.addEventListener('click', closeTripMap);
+  }
+  const mapModalOverlay = document.getElementById('mapModalOverlay');
+  if (mapModalOverlay) {
+    mapModalOverlay.addEventListener('click', (e) => {
+      if (e.target === mapModalOverlay) closeTripMap();
+    });
+  }
 
   // ── v2.0: 다중 사진 업로드 ────────────────────────────
   setupPhotoUploadZone();
@@ -694,6 +839,43 @@ function attachEventListeners() {
       if (body) body.classList.toggle('open', state.drawerOpen[tripId]);
       btn.classList.toggle('open', state.drawerOpen[tripId]);
       btn.querySelector('.drawer-arrow').textContent = state.drawerOpen[tripId] ? '▲' : '▼';
+    });
+  });
+
+  // ── AI 일기 쓰기 ────────────────────────────────────────
+  document.querySelectorAll('.btn-write-diary').forEach(btn => {
+    btn.addEventListener('click', async (e) => {
+      const tripId = e.currentTarget.dataset.tripId;
+      const trip = state.trips.find(t => t.id === tripId);
+      if (!trip) return;
+
+      showLoadingOverlay('AI가 추억을 글로 엮어내는 중입니다...');
+      try {
+        const res = await fetch(`${API_BASE_URL}/trips/${tripId}/diary`, {
+          method: 'POST'
+        });
+        if (!res.ok) throw new Error(`일기 생성 오류: ${res.status}`);
+        const json = await res.json();
+        if (!json.success) throw new Error(json.error || '일기를 생성하지 못했습니다.');
+
+        // 응답에 따라 trip.metadata.diary 업데이트
+        if (!trip.metadata) trip.metadata = {};
+        if (json.data && json.data.metadata && json.data.metadata.diary) {
+          trip.metadata.diary = json.data.metadata.diary;
+        } else if (json.data && json.data.diary) {
+          trip.metadata.diary = json.data.diary;
+        } else if (typeof json.data === 'string') {
+          trip.metadata.diary = json.data;
+        }
+
+        hideLoadingOverlay();
+        showToast('✅ AI 일기가 작성되었습니다.');
+        renderApp();
+      } catch (err) {
+        console.error('[AI Diary Error]', err);
+        hideLoadingOverlay();
+        showToast(`❌ 일기 쓰기 실패: ${err.message}`, true);
+      }
     });
   });
 }
@@ -1102,3 +1284,82 @@ async function init() {
 }
 
 init();
+
+/* ── v2.8 인터랙티브 지도 뷰 (Leaflet.js) ─────────────────────── */
+function showTripMap(tripId) {
+  const photos = state.tripPhotos[tripId];
+  if (!photos || photos.length === 0) {
+    showToast('사진 데이터가 아직 로드되지 않았습니다.');
+    return;
+  }
+
+  // GPS 좌표가 있는 사진 필터링 및 과거순 정렬
+  const gpsPhotos = photos
+    .filter(p => p.latitude != null && p.longitude != null)
+    .sort((a, b) => new Date(a.taken_at || 0).getTime() - new Date(b.taken_at || 0).getTime());
+
+  if (gpsPhotos.length === 0) {
+    showToast('🗺️ 위치 정보(GPS)가 있는 사진이 없습니다.', true);
+    return;
+  }
+
+  const modal = document.getElementById('mapModalOverlay');
+  if (modal) modal.classList.add('open');
+
+  // 모달 애니메이션이 끝난 후 지도를 그려야 크기 계산 오류가 안 남
+  setTimeout(() => {
+    if (state.mapInstance) {
+      state.mapInstance.remove();
+      state.mapInstance = null;
+    }
+
+    const map = L.map('tripMapContainer', { zoomControl: false });
+    state.mapInstance = map;
+
+    // OpenStreetMap 타일
+    L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png', {
+      attribution: '&copy; OpenStreetMap contributors &copy; CARTO'
+    }).addTo(map);
+    L.control.zoom({ position: 'topright' }).addTo(map);
+
+    const latlngs = [];
+
+    gpsPhotos.forEach((p, idx) => {
+      const latlng = [p.latitude, p.longitude];
+      latlngs.push(latlng);
+
+      // 마커 추가
+      const marker = L.marker(latlng).addTo(map);
+      
+      // 팝업 컨텐츠
+      const timeStr = p.taken_at ? new Date(p.taken_at).toLocaleString('ko-KR', { month:'short', day:'numeric', hour:'numeric', minute:'numeric' }) : '';
+      const popupHtml = `
+        <img src="${p.storage_path}" style="width:150px; height:100px; object-fit:cover; border-bottom:1px solid #eee;" />
+        <div style="font-size:12px; font-weight:600; padding:8px; text-align:center; margin:0; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:150px;">${p.original_filename}</div>
+        <div style="font-size:11px; color:#888; text-align:center; padding-bottom:8px;">${timeStr}</div>
+      `;
+      marker.bindPopup(popupHtml, { minWidth: 150, closeButton: false });
+    });
+
+    // 동선 폴리라인 연결
+    if (latlngs.length > 1) {
+      const polyline = L.polyline(latlngs, {
+        color: 'var(--color-leather)',
+        weight: 3,
+        opacity: 0.8,
+        dashArray: '5, 10',
+        lineJoin: 'round'
+      }).addTo(map);
+      
+      // 동선 전체가 보이도록 줌 맞춤
+      map.fitBounds(polyline.getBounds(), { padding: [50, 50] });
+    } else if (latlngs.length === 1) {
+      map.setView(latlngs[0], 15);
+    }
+  }, 300);
+}
+
+function closeTripMap() {
+  const modal = document.getElementById('mapModalOverlay');
+  if (modal) modal.classList.remove('open');
+}

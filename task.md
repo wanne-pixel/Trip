@@ -1,0 +1,10 @@
+- [x] Implement POST /api/trips/:id/diary route in backend/src/routes/trips.ts
+- [x] Fetch trip and photos ordered by taken_at ascending
+- [x] Format prompt string summarizing photo timeline
+- [x] Call OpenAI gpt-4o-mini to write travel diary in Korean
+- [x] Save diary to metadata.diary in trips table
+- [x] Return JSON response with success: true and diary data
+- [x] In app.js renderTripPage: Add btn-write-diary button if no diary, else render diary text
+- [x] In app.js attachEventListeners: Add click listener for POST /api/trips/:id/diary
+- [x] Set loading state and update trip.metadata.diary with response
+- [x] Add paper-book-like CSS for .diary-section in style.css
