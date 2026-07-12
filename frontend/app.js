@@ -939,8 +939,13 @@ async function handleFilesSelected(files) {
         compressedBlob = await imageCompression(file, options);
       } catch (workerErr) {
         console.warn('[압축 재시도] WebWorker 모드 실패, 메인 스레드에서 시도합니다:', workerErr);
-        options.useWebWorker = false; // 모바일 메모리 부족 대비
-        compressedBlob = await imageCompression(file, options);
+        try {
+          options.useWebWorker = false; // 모바일 메모리 부족 대비
+          compressedBlob = await imageCompression(file, options);
+        } catch (mainErr) {
+          console.warn('[압축 완전 실패] 브라우저 지원 문제로 원본 파일을 그대로 사용합니다:', mainErr);
+          compressedBlob = file; // 원본 파일로 폴백
+        }
       }
       
       // Blob을 다시 File 객체로 변환 (기존 파일명 유지)
@@ -1015,8 +1020,13 @@ async function handleAddPhotos(e) {
         compressedBlob = await imageCompression(file, options);
       } catch (workerErr) {
         console.warn('[압축 재시도] WebWorker 모드 실패, 메인 스레드에서 시도합니다:', workerErr);
-        options.useWebWorker = false;
-        compressedBlob = await imageCompression(file, options);
+        try {
+          options.useWebWorker = false;
+          compressedBlob = await imageCompression(file, options);
+        } catch (mainErr) {
+          console.warn('[압축 완전 실패] 브라우저 지원 문제로 원본 파일을 그대로 사용합니다:', mainErr);
+          compressedBlob = file; // 원본 파일로 폴백
+        }
       }
       compressedFiles.push(new File([compressedBlob], file.name, {
         type: compressedBlob.type || 'image/jpeg',
