@@ -926,7 +926,7 @@ async function handleFilesSelected(files) {
     for (let i = 0; i < files.length; i++) {
       const file = files[i];
       // 압축 옵션 설정 (EXIF 보존 필수)
-      const options = {
+      let options = {
         maxSizeMB: 1, // 최대 1MB로 압축
         maxWidthOrHeight: 1920, // 최대 해상도 FHD급
         useWebWorker: true,
@@ -934,7 +934,14 @@ async function handleFilesSelected(files) {
         fileType: 'image/jpeg' // HEIC 등도 JPEG로 변환하여 호환성 확보
       };
       
-      const compressedBlob = await imageCompression(file, options);
+      let compressedBlob;
+      try {
+        compressedBlob = await imageCompression(file, options);
+      } catch (workerErr) {
+        console.warn('[압축 재시도] WebWorker 모드 실패, 메인 스레드에서 시도합니다:', workerErr);
+        options.useWebWorker = false; // 모바일 메모리 부족 대비
+        compressedBlob = await imageCompression(file, options);
+      }
       
       // Blob을 다시 File 객체로 변환 (기존 파일명 유지)
       const compressedFile = new File([compressedBlob], file.name, {
@@ -999,11 +1006,18 @@ async function handleAddPhotos(e) {
   try {
     for (let i = 0; i < files.length; i++) {
       const file = files[i];
-      const options = {
+      let options = {
         maxSizeMB: 1, maxWidthOrHeight: 1920, useWebWorker: true,
         preserveExif: true, fileType: 'image/jpeg'
       };
-      const compressedBlob = await imageCompression(file, options);
+      let compressedBlob;
+      try {
+        compressedBlob = await imageCompression(file, options);
+      } catch (workerErr) {
+        console.warn('[압축 재시도] WebWorker 모드 실패, 메인 스레드에서 시도합니다:', workerErr);
+        options.useWebWorker = false;
+        compressedBlob = await imageCompression(file, options);
+      }
       compressedFiles.push(new File([compressedBlob], file.name, {
         type: compressedBlob.type || 'image/jpeg',
         lastModified: file.lastModified
