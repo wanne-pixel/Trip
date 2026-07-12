@@ -312,13 +312,15 @@ function renderTOCPage() {
       const fullTitle = `
         <span class="inline-editable-toc-dest" data-trip-id="${item.trip.id}" title="클릭하여 장소 수정" style="color:var(--color-primary); font-weight:600; cursor:pointer;">${loc}</span>
         <span style="opacity:0.5; margin:0 4px;">—</span>
-        ${titleDisplay}
-      `;
+        ${titleDisplay}`;
       tocHTML += `
         <div class="toc-item" data-trip-id="${item.trip.id}">
           <span class="toc-item-title">(${item.index}) ${fullTitle}</span>
           <span class="toc-leader"></span>
-          <span class="toc-item-page">p.${item.index}</span>
+          <span class="toc-item-page">
+            p.${item.index}
+            <button class="delete-trip-btn-toc" data-trip-id="${item.trip.id}" title="여행 삭제" style="margin-left:8px; background:none; border:none; cursor:pointer; font-size:14px; color:var(--color-text-secondary); transition:0.2s;" onmouseover="this.style.color='var(--color-leather)'" onmouseout="this.style.color='var(--color-text-secondary)'">🗑</button>
+          </span>
         </div>`;
     });
     tocHTML += `</div></div>`;
@@ -346,7 +348,6 @@ function renderTOCPage() {
           ${tocHTML}
         </div>
         <!-- v2.0: 다중 사진 업로드 FAB + 드래그앤드롭 -->
-        ${state.isEditMode ? `
         <div class="upload-fab-zone" id="uploadFabZone">
           <div class="upload-fab-dropzone" id="uploadDropZone">
             <input type="file" id="multiPhotoInput" multiple accept="image/*" style="display:none;">
@@ -357,7 +358,6 @@ function renderTOCPage() {
             </label>
           </div>
         </div>
-        ` : ''}
       </div>
       <div class="page-number">TOC.</div>
     </div>
@@ -812,9 +812,17 @@ function attachEventListeners() {
     el.addEventListener('click', handleDescEditStart);
   });
 
-  // ── 여행 삭제 버튼 ────────────────────────────────────
+  // ── 여행 삭제 버튼 (Trip Page) ──────────────────────
   document.querySelectorAll('.delete-trip-btn').forEach(btn => {
     btn.addEventListener('click', handleTripDelete);
+  });
+
+  // ── 여행 삭제 버튼 (TOC Page) ───────────────────────
+  document.querySelectorAll('.delete-trip-btn-toc').forEach(btn => {
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      handleTripDelete({ currentTarget: btn });
+    });
   });
 
   // ── 사진 삭제 버튼 ────────────────────────────────────
