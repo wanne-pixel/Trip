@@ -19,7 +19,8 @@ const uploadMulti = multer({
   limits: { fileSize: 20 * 1024 * 1024 },
   fileFilter: (_req, file, cb) => {
     const allowed = ['image/jpeg', 'image/png', 'image/webp', 'image/heic', 'image/heif'];
-    if (allowed.includes(file.mimetype)) {
+    const ext = file.originalname.toLowerCase().split('.').pop() || '';
+    if (allowed.includes(file.mimetype) || (file.mimetype === 'application/octet-stream' && ['jpg', 'jpeg', 'png', 'heic', 'heif'].includes(ext)) || file.mimetype === '') {
       cb(null, true);
     } else {
       cb(new Error(`지원하지 않는 파일 형식: ${file.mimetype}`));
@@ -766,13 +767,13 @@ tripsRouter.post('/:id/diary', async (req: Request<{ id: string }>, res: Respons
     const trip = tripData as Trip;
     const photoSummaries = (photos as Photo[])
       .map((p, idx) => {
-        let summary = `[사진 ${idx + 1}] 목적지/파일명: ${p.original_filename}`;
-        if (p.taken_at) summary += ` | 촬영시각: ${p.taken_at}`;
+        let summary = `[사진 ${idx + 1}]`;
+        if (p.taken_at) summary += ` 촬영시각: ${p.taken_at}`;
         
         const tags = p.vision_tags as VisionTags | null;
         if (tags) {
           const parts = [];
-          if (tags.category) parts.push(`카테고리: ${tags.category}`);
+          if (tags.category) parts.push(`분류: ${tags.category}`);
           if (parts.length > 0) summary += ` | ${parts.join(', ')}`;
         }
         return summary;
@@ -784,8 +785,10 @@ tripsRouter.post('/:id/diary', async (req: Request<{ id: string }>, res: Respons
 ${photoSummaries}
 
 이 타임라인 데이터를 바탕으로, 이 여행의 과정과 감정을 담아 매우 감성적이고 아름다우며 성찰적인 여행 일기를 한국어로 작성해주세요.
-사진에 담긴 환경이나 카테고리 정보와 시간의 흐름을 자연스럽게 일기에 녹여주세요.
-응답은 다른 인사말 없이 일기 본문 텍스트만 출력해주세요.`;
+[중요 지침]
+1. 절대 "IMG_3027.JPG"와 같은 파일명이나 "[사진 1]" 같은 기계적인 식별자를 일기 본문에 직접 노출하지 마세요.
+2. 제공된 사진의 촬영 시간과 분류(카테고리) 정보를 바탕으로, 그 순간 어떤 일이 있었는지 유추하여 각 사진마다 한 문장 정도로 자연스럽고 시적으로 요약 묘사해 주세요.
+3. 응답은 다른 인사말 없이 일기 본문 텍스트만 출력해주세요.`;
 
     // 3. OpenAI API 호출
     if (!process.env.OPENAI_API_KEY) {

@@ -18,7 +18,8 @@ const upload = multer({
   limits: { fileSize: 20 * 1024 * 1024 },
   fileFilter: (_req, file, cb) => {
     const allowed = ['image/jpeg', 'image/png', 'image/webp', 'image/heic', 'image/heif'];
-    if (allowed.includes(file.mimetype)) {
+    const ext = file.originalname.toLowerCase().split('.').pop() || '';
+    if (allowed.includes(file.mimetype) || (file.mimetype === 'application/octet-stream' && ['jpg', 'jpeg', 'png', 'heic', 'heif'].includes(ext)) || file.mimetype === '') {
       cb(null, true);
     } else {
       cb(new Error(`지원하지 않는 파일 형식입니다: ${file.mimetype}`));

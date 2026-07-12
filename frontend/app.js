@@ -239,8 +239,7 @@ function renderHeader(type, tripId) {
   } else if (type === 'trip') {
     actionBtn = `<button class="header-btn text-btn" id="btnGoTOC">목차로</button>`;
     rightBtn = `
-      <button class="header-btn text-btn map-view-btn" data-trip-id="${tripId}" title="지도 보기" style="margin-right:8px;">🗺️ 지도 보기</button>
-      <button class="header-btn text-btn delete-trip-btn" id="btnDeleteTrip" data-trip-id="${tripId}" title="여행 삭제">🗑 삭제</button>
+      <button class="header-btn text-btn map-view-btn" data-trip-id="${tripId}" title="지도 보기">🗺️ 지도 보기</button>
     `;
   }
   return `
@@ -635,7 +634,7 @@ function renderTripPage(trip, indexNumber) {
           <div class="section-label" style="display:flex; justify-content:space-between; align-items:center;">
             <span>📅 타임라인</span>
             <button class="header-btn text-btn edit-mode-toggle-btn" onclick="toggleEditMode()" style="background:var(--color-surface-alt);">
-              ${state.isEditMode ? '편집 모드 종료' : '편집 모드 켜기'}
+              ${state.isEditMode ? '편집 종료' : '편집'}
             </button>
           </div>
           <div id="timeline-${trip.id}">
