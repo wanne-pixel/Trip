@@ -275,3 +275,60 @@ photosRouter.get('/', async (req: Request, res: Response) => {
     return res.status(500).json(response);
   }
 });
+
+// ─────────────────────────────────────────────
+// PATCH /api/photos/:id/metadata — 메타데이터 업데이트 (Rule 1, Rule 2)
+// ─────────────────────────────────────────────
+photosRouter.patch('/:id/metadata', async (req: Request<{ id: string }>, res: Response) => {
+  const id = req.params.id;
+  const newMetadata = req.body.metadata;
+
+  if (!newMetadata || typeof newMetadata !== 'object') {
+    const response: ApiResponse<never> = { success: false, error: '유효한 metadata 객체가 필요합니다.' };
+    return res.status(400).json(response);
+  }
+
+  try {
+    // 1. 기존 사진 조회
+    const { data: photo, error: fetchError } = await supabase
+      .from('photos')
+      .select('metadata')
+      .eq('id', id)
+      .single();
+
+    if (fetchError) {
+      const statusCode = fetchError.code === 'PGRST116' ? 404 : 500;
+      const response: ApiResponse<never> = { 
+        success: false, 
+        error: statusCode === 404 ? `사진(id: ${id})을 찾을 수 없습니다.` : fetchError.message 
+      };
+      return res.status(statusCode).json(response);
+    }
+
+    // 2. 메타데이터 얕은 병합 (Rule 1)
+    const existingMetadata = (photo.metadata as Record<string, any>) || {};
+    const mergedMetadata = { ...existingMetadata, ...newMetadata };
+
+    // 3. 업데이트 반영
+    const { data: updatedData, error: updateError } = await supabase
+      .from('photos')
+      .update({ metadata: mergedMetadata })
+      .eq('id', id)
+      .select()
+      .single();
+
+    if (updateError) {
+      const response: ApiResponse<never> = { success: false, error: `메타데이터 업데이트 실패: ${updateError.message}` };
+      return res.status(500).json(response);
+    }
+
+    // 4. 성공 응답
+    const response: ApiResponse<Photo> = { success: true, data: updatedData as Photo };
+    return res.json(response);
+
+  } catch (err) {
+    // Rule 2: 실패에 대한 방어 로직 (500 에러로 서버를 죽이지 않고 일관된 JSON 포맷 응답)
+    const response: ApiResponse<never> = { success: false, error: (err as Error).message };
+    return res.status(500).json(response);
+  }
+});

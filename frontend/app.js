@@ -114,6 +114,19 @@ async function deletePhoto(photoId) {
   return true;
 }
 
+/** PATCH /api/photos/:id/metadata → 메타데이터 수정 */
+async function patchPhotoMetadata(photoId, payload) {
+  const res = await fetch(`${API_BASE_URL}/photos/${photoId}/metadata`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  });
+  if (!res.ok) throw new Error(`사진 메타데이터 수정 오류: ${res.status}`);
+  const json = await res.json();
+  if (!json.success) throw new Error(json.error || '사진 메타데이터 수정에 실패했습니다.');
+  return json.data;
+}
+
 /* ──────────────────────────────────────────────────────────
    2. 상태 관리
    ────────────────────────────────────────────────────────── */
@@ -368,9 +381,16 @@ function renderTimeline(tripId) {
   const allPhotos = state.tripPhotos[tripId];
   if (!allPhotos) return `<div class="photo-section-loading">📷 사진 불러오는 중...</div>`;
 
+  const trip = state.trips.find(t => t.id === tripId);
+  const customOrder = trip?.metadata?.custom_order || [];
   const classified = allPhotos
     .filter(p => p.classified !== false)
     .sort((a, b) => {
+      const idxA = customOrder.indexOf(a.id);
+      const idxB = customOrder.indexOf(b.id);
+      if (idxA !== -1 && idxB !== -1) return idxA - idxB;
+      if (idxA !== -1) return -1;
+      if (idxB !== -1) return 1;
       if (!a.taken_at && !b.taken_at) return 0;
       if (!a.taken_at) return 1;
       if (!b.taken_at) return -1;
@@ -431,7 +451,6 @@ function renderTimeline(tripId) {
   let html = tabsHtml + '<div class="timeline-list">';
 
   // v2.6: 수동 묶음/분리 메타데이터 가져오기
-  const trip = state.trips.find(t => t.id === tripId);
   const overrides = trip?.metadata?.group_overrides || {};
 
   // v2.5 & v2.6: 사진 그룹화 (3분 이내 or 수동 지정)
@@ -479,44 +498,74 @@ function renderTimeline(tripId) {
     let dateObj = firstP.taken_at ? new Date(firstP.taken_at) : null;
     let tags = '';
 
-    if (firstP.vision_tags) {
-      if (firstP.vision_tags.category) {
-        tags = `<span class="vtag vtag-category">${categoryLabel(firstP.vision_tags.category)}</span>`;
-      } else {
-        if (firstP.vision_tags.environment === 'nature' || firstP.vision_tags.environment === 'outdoor') tags = `<span class="vtag vtag-category">🏞 풍경</span>`;
-        else if (firstP.vision_tags.environment === 'indoor') tags = `<span class="vtag vtag-category">🏠 실내</span>`;
-        else tags = `<span class="vtag vtag-category">📌 기타</span>`;
-      }
-    } else {
-      tags = `<span class="vtag vtag-unknown">분석 불가</span>`;
-    }
-
     const sliderHtml = group.map((gp, i) => `
-      <div class="photo-slide" id="photo-item-${gp.id}">
+      <div class="photo-slide ${isEdit ? 'is-edit' : ''}" id="photo-item-${gp.id}">
         ${gp.storage_path
           ? `<img class="timeline-photo-img" src="${gp.storage_path}" alt="${gp.original_filename}">`
           : `<div class="timeline-photo-placeholder">🖼️<span>${gp.original_filename}</span></div>`
         }
         ${group.length > 1 ? `<div class="slide-counter">${i + 1} / ${group.length}</div>` : ''}
-        ${isEdit ? `<button class="photo-action-btn slide-delete-btn" data-photo-id="${gp.id}" data-trip-id="${gp.trip_id}" title="사진 삭제">🗑</button>` : ''}
-        ${(isEdit && group.length > 1) ? `<button class="photo-action-btn slide-split-btn" data-photo-id="${gp.id}" data-trip-id="${gp.trip_id}" title="사진 떼어내기">✂️</button>` : ''}
+        ${isEdit ? `<button class="photo-action-btn slide-delete-btn" data-photo-id="${gp.id}" data-trip-id="${gp.trip_id}" title="사진 삭제">🗑</button>
+                    <button class="photo-action-btn move-up-btn" data-photo-id="${gp.id}" data-trip-id="${gp.trip_id}" title="앞으로 이동" style="font-size:16px;">⬆️</button>
+                    <button class="photo-action-btn move-down-btn" data-photo-id="${gp.id}" data-trip-id="${gp.trip_id}" title="뒤로 이동" style="font-size:16px;">⬇️</button>` : ''}
+        ${(isEdit && group.length > 1) ? `<button class="photo-action-btn slide-split-btn" data-photo-id="${gp.id}" data-trip-id="${gp.trip_id}" title="따로 분리">✂️</button>` : ''}
       </div>
     `).join('');
 
     const prevGroup = groupIndex > 0 ? groups[groupIndex - 1] : null;
     const mergeUpBtn = (isEdit && prevGroup) 
-      ? `<button class="timeline-merge-up-btn" data-current-ids="${group.map(p=>p.id).join(',')}" data-prev-ids="${prevGroup.map(p=>p.id).join(',')}" data-trip-id="${tripId}" title="위 그룹과 묶기">🔗 묶기</button>` 
+      ? `<button class="timeline-merge-up-btn" data-current-ids="${group.map(p=>p.id).join(',')}" data-prev-ids="${prevGroup.map(p=>p.id).join(',')}" data-trip-id="${tripId}" title="위 그룹과 묶기" style="margin-top:8px;">🔗 이전 사진들과 묶기</button>` 
       : '';
 
+    const pMeta = firstP.metadata || {};
+    const manualCategory = pMeta.manual_category || '';
+    const locationName = pMeta.location_name || '';
+    const rating = pMeta.rating || 0;
+    const memo = pMeta.memo || '';
+
+    const displayCategory = manualCategory ? `<span class="meta-badge meta-cat meta-cat-val">#${manualCategory}</span>` : `<span class="meta-badge meta-cat-empty">카테고리 없음</span>`;
+    const displayLoc = locationName ? `<span class="meta-loc">📍 ${locationName}</span>` : '';
+    const displayRating = rating > 0 ? `<span class="meta-rating">` + '⭐'.repeat(rating) + `</span>` : '';
+    const displayMemo = memo ? `<div class="meta-memo">${memo}</div>` : '';
+
     html += `
-      <div class="timeline-item">
+      <div class="timeline-item ${isEdit ? 'is-edit' : ''}">
         <div class="timeline-dot"></div>
         <div class="timeline-card">
           <div class="photo-slider">${sliderHtml}</div>
-          <div class="timeline-card-footer">
-            ${dateObj ? `<span class="timeline-date">🕐 ${dateObj.toLocaleDateString('ko-KR', { month: 'long', day: 'numeric', hour: '2-digit', minute: '2-digit' })}</span>` : ''}
-            <div class="timeline-tags">${tags}</div>
+          <div class="timeline-card-footer" id="footer-view-${firstP.id}">
+            <div class="meta-row">
+              ${displayCategory}
+              ${displayLoc}
+              ${displayRating}
+              <div class="meta-spacer"></div>
+              <button class="meta-edit-toggle" onclick="toggleMetaEdit('${firstP.id}')" title="메타데이터 편집">✏️</button>
+            </div>
+            ${displayMemo}
             ${mergeUpBtn}
+          </div>
+          <div class="timeline-card-footer meta-edit-form" id="footer-edit-${firstP.id}" style="display: none;">
+             <div class="meta-edit-row">
+                <select id="meta-cat-${firstP.id}" class="meta-input-select">
+                  <option value="" ${!manualCategory ? 'selected' : ''}>카테고리 선택</option>
+                  <option value="맛집" ${manualCategory === '맛집' ? 'selected' : ''}>맛집</option>
+                  <option value="숙소" ${manualCategory === '숙소' ? 'selected' : ''}>숙소</option>
+                  <option value="풍경" ${manualCategory === '풍경' ? 'selected' : ''}>풍경</option>
+                  <option value="액티비티" ${manualCategory === '액티비티' ? 'selected' : ''}>액티비티</option>
+                  <option value="카페" ${manualCategory === '카페' ? 'selected' : ''}>카페</option>
+                  <option value="기타" ${manualCategory === '기타' ? 'selected' : ''}>기타</option>
+                </select>
+                <input type="text" id="meta-loc-${firstP.id}" class="meta-input-text" placeholder="장소 이름" value="${locationName}">
+                <button class="meta-edit-toggle meta-save-btn" onclick="saveMetaEdit('${firstP.id}', '${tripId}')" title="저장">✔️</button>
+             </div>
+             <div class="meta-edit-row" style="margin-top: 8px;">
+                <div class="meta-rating-edit" id="meta-rating-edit-${firstP.id}" data-rating="${rating}" style="display: flex; gap: 4px;">
+                  ${[1,2,3,4,5].map(i => `<span class="star-btn ${i <= rating ? 'active' : ''}" onclick="setRating('${firstP.id}', ${i})" style="cursor:pointer; font-size: 16px; opacity: ${i <= rating ? 1 : 0.3}; transition: opacity 0.2s;">⭐</span>`).join('')}
+                </div>
+             </div>
+             <div class="meta-edit-row" style="margin-top: 8px;">
+                <input type="text" id="meta-memo-${firstP.id}" class="meta-input-text meta-input-memo" placeholder="메모를 남겨보세요..." value="${memo}" style="width: 100%;">
+             </div>
           </div>
         </div>
       </div>`;
@@ -619,6 +668,18 @@ function renderTripPage(trip, indexNumber) {
                 <span class="edit-hint" style="font-size:11px;">✏️</span>
               </p>
             </div>
+          </div>
+
+          <div class="trip-metadata-badges">
+            <span class="badge inline-editable-comp" data-trip-id="${trip.id}" title="클릭하여 동행인 수정">
+              👥 <span class="badge-text">${trip.metadata?.companions || '동행인 추가'}</span> <span class="edit-hint">✏️</span>
+            </span>
+            <span class="badge inline-editable-quote" data-trip-id="${trip.id}" title="클릭하여 한줄 평 수정">
+              💬 <span class="badge-text">${trip.metadata?.quote || '한줄 평을 남겨보세요'}</span> <span class="edit-hint">✏️</span>
+            </span>
+            <span class="badge inline-editable-rating" data-trip-id="${trip.id}" title="클릭하여 별점 수정">
+              ⭐ <span class="badge-text">${trip.metadata?.rating ? '★'.repeat(trip.metadata.rating) + '☆'.repeat(5 - trip.metadata.rating) : '평가하기'}</span> <span class="edit-hint">✏️</span>
+            </span>
           </div>
 
           ${state.isEditMode ? `
@@ -730,6 +791,52 @@ window.toggleEditMode = function() {
   renderApp();
 };
 
+window.toggleMetaEdit = function(photoId) {
+  const viewEl = document.getElementById(`footer-view-${photoId}`);
+  const editEl = document.getElementById(`footer-edit-${photoId}`);
+  if (viewEl && editEl) {
+    viewEl.style.display = 'none';
+    editEl.style.display = 'block';
+  }
+};
+
+window.setRating = function(photoId, rating) {
+  const container = document.getElementById(`meta-rating-edit-${photoId}`);
+  if (container) {
+    container.dataset.rating = rating;
+    container.innerHTML = [1,2,3,4,5].map(i => `<span class="star-btn ${i <= rating ? 'active' : ''}" onclick="setRating('${photoId}', ${i})" style="cursor:pointer; font-size: 16px; opacity: ${i <= rating ? 1 : 0.3}; transition: opacity 0.2s;">⭐</span>`).join('');
+  }
+};
+
+window.saveMetaEdit = async function(photoId, tripId) {
+  const catEl = document.getElementById(`meta-cat-${photoId}`);
+  const locEl = document.getElementById(`meta-loc-${photoId}`);
+  const memoEl = document.getElementById(`meta-memo-${photoId}`);
+  const ratingEl = document.getElementById(`meta-rating-edit-${photoId}`);
+
+  const manual_category = catEl ? catEl.value : '';
+  const location_name = locEl ? locEl.value.trim() : '';
+  const memo = memoEl ? memoEl.value.trim() : '';
+  const rating = ratingEl ? parseInt(ratingEl.dataset.rating, 10) : 0;
+
+  try {
+    const updated = await patchPhotoMetadata(photoId, { metadata: { manual_category, location_name, rating, memo } });
+    
+    // update local state
+    const photos = state.tripPhotos[tripId];
+    if (photos) {
+      const p = photos.find(x => x.id === photoId);
+      if (p) {
+        p.metadata = Object.assign({}, p.metadata || {}, updated.metadata || { manual_category, location_name, rating, memo });
+      }
+    }
+    refreshPhotoSection(tripId);
+    showToast('✅ 메타데이터가 저장되었습니다.');
+  } catch(err) {
+    showToast(`❌ 저장 실패: ${err.message}`, true);
+  }
+};
+
 function attachEventListeners() {
   // 표지 클릭
   const coverPage = document.getElementById('page-cover');
@@ -811,6 +918,11 @@ function attachEventListeners() {
     el.addEventListener('click', handleDescEditStart);
   });
 
+  // ── 메타데이터 인라인 편집 ─────────────────────────────
+  document.querySelectorAll('.inline-editable-comp').forEach(el => el.addEventListener('click', handleCompEditStart));
+  document.querySelectorAll('.inline-editable-quote').forEach(el => el.addEventListener('click', handleQuoteEditStart));
+  document.querySelectorAll('.inline-editable-rating').forEach(el => el.addEventListener('click', handleRatingEditStart));
+
   // ── 여행 삭제 버튼 (Trip Page) ──────────────────────
   document.querySelectorAll('.delete-trip-btn').forEach(btn => {
     btn.addEventListener('click', handleTripDelete);
@@ -835,6 +947,14 @@ function attachEventListeners() {
   });
   document.querySelectorAll('.timeline-merge-up-btn').forEach(btn => {
     btn.addEventListener('click', handleMergeUp);
+  });
+
+  // ── v2.10 위치 이동 버튼 ──────────────────────────────────
+  document.querySelectorAll('.move-up-btn').forEach(btn => {
+    btn.addEventListener('click', handleMoveUp);
+  });
+  document.querySelectorAll('.move-down-btn').forEach(btn => {
+    btn.addEventListener('click', handleMoveDown);
   });
 
   // ── 미분류 서랍 토글 ──────────────────────────────────
@@ -1193,6 +1313,165 @@ function handleDestEditStart(e) {
   });
 }
 
+/* ── 동행인 인라인 편집 ── */
+function handleCompEditStart(e) {
+  const el = e.currentTarget;
+  const tripId = el.dataset.tripId;
+  const trip = state.trips.find(t => t.id === tripId);
+  const currentComp = trip?.metadata?.companions || '';
+  const options = ['나홀로', '가족', '연인', '친구', '반려동물', '기타'];
+  
+  const select = document.createElement('select');
+  select.className = 'badge-inline-select';
+  
+  const defOpt = document.createElement('option');
+  defOpt.value = '';
+  defOpt.textContent = '동행인 선택';
+  if (!currentComp) defOpt.selected = true;
+  select.appendChild(defOpt);
+  
+  options.forEach(opt => {
+    const option = document.createElement('option');
+    option.value = opt;
+    option.textContent = opt;
+    if (opt === currentComp) option.selected = true;
+    select.appendChild(option);
+  });
+
+  el.replaceWith(select);
+  select.focus();
+
+  const commitEdit = async () => {
+    const newComp = select.value;
+    if (newComp === currentComp) {
+      select.replaceWith(el);
+      return;
+    }
+    try {
+      const updated = await patchTripMetadata(tripId, { metadata: { companions: newComp } });
+      const tripInState = state.trips.find(t => t.id === tripId);
+      if (tripInState) tripInState.metadata = updated.metadata;
+      el.innerHTML = `👥 <span class="badge-text">${newComp || '동행인 추가'}</span> <span class="edit-hint">✏️</span>`;
+      select.replaceWith(el);
+      showToast('✅ 동행인이 수정되었습니다.');
+    } catch (err) {
+      console.error('[patchTripMetadata comp 실패]', err);
+      showToast(`❌ 수정 실패: ${err.message}`, true);
+      select.replaceWith(el);
+    }
+  };
+
+  select.addEventListener('blur', commitEdit);
+  select.addEventListener('change', commitEdit);
+  select.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') { select.replaceWith(el); }
+  });
+}
+
+/* ── 한줄 평 인라인 편집 ── */
+function handleQuoteEditStart(e) {
+  const el = e.currentTarget;
+  const tripId = el.dataset.tripId;
+  const trip = state.trips.find(t => t.id === tripId);
+  const currentQuote = trip?.metadata?.quote || '';
+
+  const input = document.createElement('input');
+  input.type = 'text';
+  input.value = currentQuote;
+  input.placeholder = '한줄 평을 남겨보세요';
+  input.className = 'badge-inline-input';
+
+  el.replaceWith(input);
+  input.focus();
+
+  const commitEdit = async () => {
+    const newQuote = input.value.trim();
+    if (newQuote === currentQuote) {
+      input.replaceWith(el);
+      return;
+    }
+    try {
+      const updated = await patchTripMetadata(tripId, { metadata: { quote: newQuote } });
+      const tripInState = state.trips.find(t => t.id === tripId);
+      if (tripInState) tripInState.metadata = updated.metadata;
+      el.innerHTML = `💬 <span class="badge-text">${newQuote || '한줄 평을 남겨보세요'}</span> <span class="edit-hint">✏️</span>`;
+      input.replaceWith(el);
+      showToast('✅ 한줄 평이 수정되었습니다.');
+    } catch (err) {
+      console.error('[patchTripMetadata quote 실패]', err);
+      showToast(`❌ 수정 실패: ${err.message}`, true);
+      input.replaceWith(el);
+    }
+  };
+
+  input.addEventListener('blur', commitEdit);
+  input.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') { e.preventDefault(); input.blur(); }
+    if (e.key === 'Escape') { input.replaceWith(el); }
+  });
+}
+
+/* ── 별점 인라인 편집 ── */
+function handleRatingEditStart(e) {
+  const el = e.currentTarget;
+  const tripId = el.dataset.tripId;
+  const trip = state.trips.find(t => t.id === tripId);
+  const currentRating = trip?.metadata?.rating || 0;
+
+  const container = document.createElement('div');
+  container.className = 'badge-inline-rating';
+  container.tabIndex = 0;
+  container.style.outline = 'none';
+  
+  const stars = [];
+  for (let i = 1; i <= 5; i++) {
+    const star = document.createElement('span');
+    star.textContent = i <= currentRating ? '★' : '☆';
+    star.className = 'rating-star';
+    star.style.cursor = 'pointer';
+    star.dataset.val = i;
+    
+    star.addEventListener('mouseenter', () => {
+      stars.forEach(s => s.textContent = s.dataset.val <= i ? '★' : '☆');
+    });
+    star.addEventListener('mouseleave', () => {
+      stars.forEach(s => s.textContent = s.dataset.val <= currentRating ? '★' : '☆');
+    });
+    star.addEventListener('click', async (ev) => {
+      ev.stopPropagation();
+      const newRating = i;
+      if (newRating === currentRating) {
+        container.replaceWith(el);
+        return;
+      }
+      try {
+        const updated = await patchTripMetadata(tripId, { metadata: { rating: newRating } });
+        const tripInState = state.trips.find(t => t.id === tripId);
+        if (tripInState) tripInState.metadata = updated.metadata;
+        el.innerHTML = `⭐ <span class="badge-text">${'★'.repeat(newRating) + '☆'.repeat(5 - newRating)}</span> <span class="edit-hint">✏️</span>`;
+        container.replaceWith(el);
+        showToast('✅ 별점이 수정되었습니다.');
+      } catch (err) {
+        console.error('[patchTripMetadata rating 실패]', err);
+        showToast(`❌ 수정 실패: ${err.message}`, true);
+        container.replaceWith(el);
+      }
+    });
+    stars.push(star);
+    container.appendChild(star);
+  }
+
+  const blurHandler = (ev) => {
+    if (!container.contains(ev.relatedTarget)) {
+      container.replaceWith(el);
+    }
+  };
+  container.addEventListener('blur', blurHandler, true);
+  
+  el.replaceWith(container);
+  container.focus();
+}
+
 /* ── 여행 삭제 핸들러 ── */
 async function handleTripDelete(e) {
   const tripId = e.currentTarget.dataset.tripId;
@@ -1295,6 +1574,91 @@ async function handleMergeUp(e) {
     renderApp(); // 전체 렌더 및 이벤트 바인딩
   } catch (err) {
     showToast(`❌ 묶기 실패: ${err.message}`, true);
+  }
+}
+
+/* ── v2.10 사진 이동 (Up/Down) 핸들러 ── */
+async function handleMoveUp(e) {
+  e.stopPropagation();
+  const photoId = e.currentTarget.dataset.photoId;
+  const tripId = e.currentTarget.dataset.tripId;
+  
+  const trip = state.trips.find(t => t.id === tripId);
+  if (!trip) return;
+  
+  const customOrder = trip.metadata?.custom_order || [];
+  const allPhotos = state.tripPhotos[tripId] || [];
+  const classified = allPhotos
+    .filter(p => p.classified !== false)
+    .sort((a, b) => {
+      const idxA = customOrder.indexOf(a.id);
+      const idxB = customOrder.indexOf(b.id);
+      if (idxA !== -1 && idxB !== -1) return idxA - idxB;
+      if (idxA !== -1) return -1;
+      if (idxB !== -1) return 1;
+      if (!a.taken_at && !b.taken_at) return 0;
+      if (!a.taken_at) return 1;
+      if (!b.taken_at) return -1;
+      return new Date(a.taken_at) - new Date(b.taken_at);
+    });
+
+  const idx = classified.findIndex(p => p.id === photoId);
+  if (idx <= 0) return; // Cannot move up
+
+  const newArray = classified.map(p => p.id);
+  const temp = newArray[idx - 1];
+  newArray[idx - 1] = newArray[idx];
+  newArray[idx] = temp;
+
+  try {
+    const updated = await patchTripMetadata(tripId, { metadata: { ...trip.metadata, custom_order: newArray } });
+    trip.metadata = updated.metadata;
+    renderApp();
+    showToast('⬆️ 사진을 앞으로 이동했습니다.');
+  } catch (err) {
+    showToast(`❌ 이동 실패: ${err.message}`, true);
+  }
+}
+
+async function handleMoveDown(e) {
+  e.stopPropagation();
+  const photoId = e.currentTarget.dataset.photoId;
+  const tripId = e.currentTarget.dataset.tripId;
+  
+  const trip = state.trips.find(t => t.id === tripId);
+  if (!trip) return;
+  
+  const customOrder = trip.metadata?.custom_order || [];
+  const allPhotos = state.tripPhotos[tripId] || [];
+  const classified = allPhotos
+    .filter(p => p.classified !== false)
+    .sort((a, b) => {
+      const idxA = customOrder.indexOf(a.id);
+      const idxB = customOrder.indexOf(b.id);
+      if (idxA !== -1 && idxB !== -1) return idxA - idxB;
+      if (idxA !== -1) return -1;
+      if (idxB !== -1) return 1;
+      if (!a.taken_at && !b.taken_at) return 0;
+      if (!a.taken_at) return 1;
+      if (!b.taken_at) return -1;
+      return new Date(a.taken_at) - new Date(b.taken_at);
+    });
+
+  const idx = classified.findIndex(p => p.id === photoId);
+  if (idx === -1 || idx === classified.length - 1) return; // Cannot move down
+
+  const newArray = classified.map(p => p.id);
+  const temp = newArray[idx + 1];
+  newArray[idx + 1] = newArray[idx];
+  newArray[idx] = temp;
+
+  try {
+    const updated = await patchTripMetadata(tripId, { metadata: { ...trip.metadata, custom_order: newArray } });
+    trip.metadata = updated.metadata;
+    renderApp();
+    showToast('⬇️ 사진을 뒤로 이동했습니다.');
+  } catch (err) {
+    showToast(`❌ 이동 실패: ${err.message}`, true);
   }
 }
 

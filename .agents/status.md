@@ -1,17 +1,17 @@
 # Trip Project — 현재 상태판 (Status Board)
 
-*최종 업데이트: 2026-07-12 by Agent C*
+*최종 업데이트: 2026-07-13 by Agent A*
 
 ---
 
-## 📌 현재 개발 단계: v3.0 (AI 여행 일기 자동 작성 기능 완료 및 배포)
+## 📌 현재 개발 단계: v3.2 (Photo Metadata Manual Entry UI)
 
 ### 1. 에이전트별 상태 및 작업 히스토리
 
 | 에이전트 | 최근 작업 ID | 최신 상태 | 주요 작업 내용 |
 | **Master Agent** | `HOTFIX_004` | ✅ 완료 | v2.8 이전 데이터들의 누락된 `start_date` 강제 생성용 DB 마이그레이션 스크립트 작성 및 실행 |
-| **Agent A (Frontend)** | `TASK_AgentA_015` | ✅ 완료 | v2.9 AI 일기 쓰기 버튼 추가 및 API 통신, 일기 UI 종이책 스타일 적용 |
-| **Agent B (Backend)** | `TASK_AgentB_006` | ✅ 완료 | v2.8 AI 기반 여행 일기 자동 작성 API (`POST /api/trips/:id/diary`) 구현 |
+| **Agent A (Frontend)** | `TASK_AgentA_017` | ✅ 완료 | 사진 수동 메타데이터(카테고리, 장소, 별점, 메모) 입력 및 인라인 편집 UI 구현 |
+| **Agent B (Backend)** | `TASK_AgentB_007` | ✅ 완료 | `PATCH /api/photos/:id/metadata` 라우트 추가 (metadata 업데이트 병합) |
 | **Agent C (DevOps)** | `TASK_AgentC_011` | ✅ 완료 | TOC 업로드 버튼 복구 및 모바일 HEIC 압축 폴백 추가, 배포 트리거 완료 |
 | **Agent Test (임시)** | `TASK_AgentTest_001` | ✅ 완료 | Vision API 비교 테스트용 독립 로컬 서버(PORT 8080) 구축 |
 
@@ -32,6 +32,7 @@
 | `frontend/app.js` | ✅ 완료 (v2.5 슬라이더, v2.6 수동 묶기/분리 핸들러, v2.7 목적지 수정 및 EXIF chunk 추출 로직) |
 | `frontend/style.css` | ✅ 완료 (v2.5 `.photo-slider`, v2.6 제어 버튼, v2.7 목적지 텍스트 스타일) |
 | `backend/src/routes/trips.ts` | ✅ 완료 (v2.7 EXIF chunk 파싱 로직 추가) |
+| `backend/src/routes/photos.ts` | ✅ 완료 (PATCH /api/photos/:id/metadata 라우트 추가) |
 
 ---
 
@@ -51,3 +52,6 @@
 - [x] v2.9 - Day 탭 UI 및 편집 모드 추가 (isEditMode, selectedDay 적용)
 - [x] v2.9 - AI 일기 작성 UI 및 API 연동 (프론트엔드 완료)
 - [x] v3.0 - AI 여행 일기 자동 작성 기능 통합 완료 (Agent C)
+- [x] v2.10 - 사진 수동 정렬 기능 및 분리/묶기 UI 텍스트 개선 (Agent A)
+- [x] v3.1 - 사진 메타데이터 업데이트 API (`PATCH /api/photos/:id/metadata`) 구현 (Agent B)
+- [x] v3.2 - 사진 수동 메타데이터 입력 UI (카테고리, 장소, 별점, 메모) 구현 (Agent A)
