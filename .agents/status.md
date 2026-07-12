@@ -24,7 +24,7 @@
 ## 🛠️ 시스템 정보 및 DB 스키마 정보
 - Node.js: v24.16.0
 - DB: Supabase (연동 완료)
-- Git Branch: `master` (최신 커밋: `54284de`)
+- Git Branch: `master` (최신 커밋: `147a932`)
 
 ### Master/Agent 최근 구현 완료 파일
 | 파일 | 상태 |
