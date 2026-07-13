@@ -1890,7 +1890,14 @@ async function handleMakeCover(e) {
   }
 }
 
-/* ── v2.14 Lightbox 전체화면 ─────────────────────────────── */
+/* ── v2.14/v2.15 Lightbox 전체화면 (확대/축소 및 이동 기능) ─────────────────────────────── */
+let lightboxScale = 1;
+let lightboxPanX = 0;
+let lightboxPanY = 0;
+let isPanning = false;
+let startPanX = 0;
+let startPanY = 0;
+
 function openLightbox(imgSrc) {
   let overlay = document.getElementById('lightboxOverlay');
   if (!overlay) {
@@ -1902,12 +1909,69 @@ function openLightbox(imgSrc) {
       <img class="lightbox-img" id="lightboxImg" src="">
     `;
     document.body.appendChild(overlay);
+    
+    const img = document.getElementById('lightboxImg');
+
+    // 마우스 휠 확대/축소
+    overlay.addEventListener('wheel', (e) => {
+      e.preventDefault();
+      const zoomFactor = 0.1;
+      if (e.deltaY < 0) {
+        lightboxScale = Math.min(lightboxScale + zoomFactor, 5); // 최대 5배
+      } else {
+        lightboxScale = Math.max(lightboxScale - zoomFactor, 0.5); // 최소 0.5배
+      }
+      updateLightboxTransform(img);
+    }, { passive: false });
+
+    // 드래그 이동 (Pan)
+    img.addEventListener('mousedown', (e) => {
+      isPanning = true;
+      startPanX = e.clientX - lightboxPanX;
+      startPanY = e.clientY - lightboxPanY;
+      img.style.cursor = 'grabbing';
+      e.preventDefault();
+    });
+    window.addEventListener('mousemove', (e) => {
+      if (!isPanning) return;
+      lightboxPanX = e.clientX - startPanX;
+      lightboxPanY = e.clientY - startPanY;
+      updateLightboxTransform(img);
+    });
+    window.addEventListener('mouseup', () => {
+      isPanning = false;
+      img.style.cursor = 'grab';
+    });
+    
+    // 더블클릭 시 초기화
+    img.addEventListener('dblclick', () => {
+      resetLightboxTransform(img);
+    });
+
     overlay.addEventListener('click', (e) => {
       if (e.target === overlay) closeLightbox();
     });
+    
+    img.style.cursor = 'grab';
   }
-  document.getElementById('lightboxImg').src = imgSrc;
+  
+  const img = document.getElementById('lightboxImg');
+  img.src = imgSrc;
+  resetLightboxTransform(img);
   overlay.classList.add('open');
+}
+
+function updateLightboxTransform(img) {
+  img.style.transition = 'none';
+  img.style.transform = `translate(${lightboxPanX}px, ${lightboxPanY}px) scale(${lightboxScale})`;
+}
+
+function resetLightboxTransform(img) {
+  lightboxScale = 1;
+  lightboxPanX = 0;
+  lightboxPanY = 0;
+  img.style.transition = 'transform 0.3s cubic-bezier(0.34, 1.56, 0.64, 1)';
+  img.style.transform = `translate(0px, 0px) scale(1)`;
 }
 
 function closeLightbox() {

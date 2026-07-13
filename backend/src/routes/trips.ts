@@ -416,6 +416,23 @@ tripsRouter.post(
       return res.status(400).json(response);
     }
 
+    // [v2.15] Batch Deduplication: 한 번의 업로드 내에서 중복된 파일(이름+크기) 제거
+    const seenBatch = new Set<string>();
+    const uniqueFiles: Express.Multer.File[] = [];
+    const uniqueExifChunks: Express.Multer.File[] = [];
+
+    files.forEach((file, idx) => {
+      const key = `${file.originalname}-${file.size}`;
+      if (!seenBatch.has(key)) {
+        seenBatch.add(key);
+        uniqueFiles.push(file);
+        if (exifChunks) uniqueExifChunks.push(exifChunks[idx]);
+      }
+    });
+
+    files = uniqueFiles;
+    const finalExifChunks = exifChunks ? uniqueExifChunks : undefined;
+
     try {
       // ── Step 1: 각 사진 EXIF + Vision 병렬 추출 ──
       // Promise.allSettled: 일부 실패해도 전체 중단 없음 (Rule 2)
@@ -426,7 +443,7 @@ tripsRouter.post(
         const chunkResults = await Promise.allSettled(
           chunk.map(async (file, idx) => {
             const globalIdx = i + idx;
-            const exifFile = exifChunks?.[globalIdx] || file;
+            const exifFile = finalExifChunks?.[globalIdx] || file;
             const exif: ExifResult = await extractExif(exifFile.buffer);
 
             // 사진마다 태그를 붙이기 위해 항상 Vision API 호출 (v2.0)
@@ -626,6 +643,45 @@ tripsRouter.post(
     }
 
     try {
+      // [v2.15] Deduplication: 기존 DB에 있는 파일명과 Batch 내 중복 제거
+      const { data: existingPhotos } = await supabase
+        .from('photos')
+        .select('original_filename')
+        .eq('trip_id', tripId);
+
+      const dbFileNames = new Set(existingPhotos?.map(p => p.original_filename) || []);
+      const seenBatch = new Set<string>();
+      const uniqueFiles: Express.Multer.File[] = [];
+      const uniqueExifChunks: Express.Multer.File[] = [];
+
+      files.forEach((file, idx) => {
+        // 이미 DB에 있는 파일명은 건너뜀
+        if (dbFileNames.has(file.originalname)) return;
+
+        // 동일한 업로드 묶음 내 중복 방지
+        const key = `${file.originalname}-${file.size}`;
+        if (!seenBatch.has(key)) {
+          seenBatch.add(key);
+          uniqueFiles.push(file);
+          if (exifChunks) uniqueExifChunks.push(exifChunks[idx]);
+        }
+      });
+
+      files = uniqueFiles;
+      const finalExifChunks = exifChunks ? uniqueExifChunks : undefined;
+
+      // 만약 모든 파일이 중복이라서 남은 파일이 없다면 성공(빈 배열) 반환
+      if (files.length === 0) {
+        return res.status(201).json({
+          success: true,
+          data: {
+            trip_id: tripId,
+            photos: [],
+            summary: { total: 0, succeeded: 0, failed: 0, classified: 0, unclassified: 0 }
+          }
+        });
+      }
+
       // ── Step 1: 각 사진 EXIF + Vision 병렬 처리 ──
       // Promise.allSettled: 일부 실패해도 전체 중단 없음 (Rule 2)
       const metaResults: PromiseSettledResult<{file: Express.Multer.File; exif: ExifResult; vision: VisionTags | null}>[] = [];
@@ -635,7 +691,7 @@ tripsRouter.post(
         const chunkResults = await Promise.allSettled(
           chunk.map(async (file, idx) => {
             const globalIdx = i + idx;
-            const exifFile = exifChunks?.[globalIdx] || file;
+            const exifFile = finalExifChunks?.[globalIdx] || file;
             const exif: ExifResult = await extractExif(exifFile.buffer);
 
             // 모든 사진에 Vision API 호출 (category 태그 부여)
