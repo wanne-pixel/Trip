@@ -1032,9 +1032,9 @@ function setupPhotoUploadZone() {
 async function handleFilesSelected(files) {
   if (!files || files.length === 0) return;
 
-  // 파일 개수 제한 (한 번에 최대 50장)
-  if (files.length > 50) {
-    showToast(`❌ 한 번에 최대 50장까지만 업로드할 수 있습니다.`, true);
+  // 파일 개수 제한 (한 번에 최대 150장)
+  if (files.length > 150) {
+    showToast(`❌ 한 번에 최대 150장까지만 업로드할 수 있습니다.`, true);
     return;
   }
 
@@ -1082,16 +1082,34 @@ async function handleFilesSelected(files) {
     return;
   }
 
-  showLoadingOverlay(`압축 완료! AI가 ${compressedFiles.length}장의 사진을 분석하여\n여행의 조각들을 맞추고 있습니다...`);
-
   try {
-    const result = await createTripFromPhotos(compressedFiles, files);
-    // result: { trip, photos, summary }
-    const { trip, photos } = result;
-
-    // state 업데이트
-    state.trips.unshift(trip);
-    state.tripPhotos[trip.id] = photos || [];
+    let trip = null;
+    let photos = [];
+    let uploadedCount = 0;
+    const totalCount = files.length;
+    
+    for (let i = 0; i < totalCount; i += 10) {
+      const chunkCompressed = compressedFiles.slice(i, i + 10);
+      const chunkOriginal = files.slice(i, i + 10);
+      
+      showLoadingOverlay(`사진을 서버에 전송 중입니다...\n(업로드 완료: ${uploadedCount} / ${totalCount})`);
+      
+      if (i === 0) {
+        const result = await createTripFromPhotos(chunkCompressed, chunkOriginal);
+        trip = result.trip;
+        photos.push(...(result.photos || []));
+        
+        // state 업데이트
+        state.trips.unshift(trip);
+        state.tripPhotos[trip.id] = photos;
+      } else {
+        const newPhotos = await addPhotosToTrip(trip.id, chunkCompressed, chunkOriginal);
+        photos.push(...newPhotos);
+        state.tripPhotos[trip.id] = photos;
+      }
+      
+      uploadedCount += chunkCompressed.length;
+    }
 
     hideLoadingOverlay();
     showToast(`✅ "${trip.title}" 여행이 자동 생성되었습니다!`);
@@ -1118,8 +1136,8 @@ async function handleAddPhotos(e) {
   const files = Array.from(input.files);
   if (!files || files.length === 0) return;
 
-  if (files.length > 50) {
-    showToast(`❌ 한 번에 최대 50장까지만 업로드할 수 있습니다.`, true);
+  if (files.length > 150) {
+    showToast(`❌ 한 번에 최대 150장까지만 업로드할 수 있습니다.`, true);
     input.value = '';
     return;
   }
@@ -1160,14 +1178,28 @@ async function handleAddPhotos(e) {
     return;
   }
 
-  showLoadingOverlay(`사진을 업로드하고 AI가 분석 중입니다...`);
   try {
-    const newPhotos = await addPhotosToTrip(tripId, compressedFiles, files);
+    const totalCount = files.length;
+    let uploadedCount = 0;
+    const allNewPhotos = [];
+    
+    for (let i = 0; i < totalCount; i += 10) {
+      const chunkCompressed = compressedFiles.slice(i, i + 10);
+      const chunkOriginal = files.slice(i, i + 10);
+      
+      showLoadingOverlay(`사진을 서버에 전송 중입니다...\n(업로드 완료: ${uploadedCount} / ${totalCount})`);
+      
+      const newPhotos = await addPhotosToTrip(tripId, chunkCompressed, chunkOriginal);
+      allNewPhotos.push(...newPhotos);
+      uploadedCount += chunkCompressed.length;
+    }
+    
     if (!state.tripPhotos[tripId]) state.tripPhotos[tripId] = [];
-    state.tripPhotos[tripId].push(...newPhotos);
+    state.tripPhotos[tripId].push(...allNewPhotos);
     refreshPhotoSection(tripId);
+    
     hideLoadingOverlay();
-    showToast(`✅ ${newPhotos.length}장의 사진이 추가되었습니다!`);
+    showToast(`✅ ${allNewPhotos.length}장의 사진이 추가되었습니다!`);
   } catch (err) {
     console.error('[addPhotosToTrip 실패]', err);
     hideLoadingOverlay();
