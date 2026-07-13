@@ -1801,19 +1801,27 @@ function showTripMap(tripId) {
       // 마커 추가
       const marker = L.marker(latlng).addTo(map);
       
-      // 팝업 컨텐츠
+      // 팝업 컨텐츠 (이미지 클릭 시 구글 지도로 새 창 열기)
       const timeStr = p.taken_at ? new Date(p.taken_at).toLocaleString('ko-KR', { month:'short', day:'numeric', hour:'numeric', minute:'numeric' }) : '';
+      const googleMapsUrl = `https://www.google.com/maps/search/?api=1&query=${p.latitude},${p.longitude}`;
       const popupHtml = `
-        <img src="${p.storage_path}" style="width:150px; height:100px; object-fit:cover; border-bottom:1px solid #eee;" />
+        <a href="${googleMapsUrl}" target="_blank" title="구글 지도에서 열기" style="display:block; text-decoration:none;">
+          <img src="${p.storage_path}" style="width:150px; height:100px; object-fit:cover; border-bottom:1px solid #eee; transition: opacity 0.2s;" onmouseover="this.style.opacity=0.8" onmouseout="this.style.opacity=1" />
+          <div style="position:absolute; top:5px; right:5px; background:rgba(0,0,0,0.6); color:white; border-radius:50%; width:24px; height:24px; display:flex; align-items:center; justify-content:center; font-size:12px; pointer-events:none;">🗺️</div>
+        </a>
         <div style="font-size:12px; font-weight:600; padding:8px; text-align:center; margin:0; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:150px;">${p.original_filename}</div>
         <div style="font-size:11px; color:#888; text-align:center; padding-bottom:8px;">${timeStr}</div>
       `;
       marker.bindPopup(popupHtml, { minWidth: 150, closeButton: false });
     });
 
-    // 동선 폴리라인 연결
+    // 동선 폴리라인 연결 (시작점과 끝점만 잇는 심플한 직선)
     if (latlngs.length > 1) {
-      const polyline = L.polyline(latlngs, {
+      const startPoint = latlngs[0];
+      const endPoint = latlngs[latlngs.length - 1];
+      const simplePath = [startPoint, endPoint];
+
+      const polyline = L.polyline(simplePath, {
         color: 'var(--color-leather)',
         weight: 3,
         opacity: 0.8,
