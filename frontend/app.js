@@ -321,10 +321,13 @@ function renderTOCPage() {
       if (titleDisplay.startsWith(loc)) titleDisplay = titleDisplay.substring(loc.length).trim();
       if (titleDisplay.startsWith('—') || titleDisplay.startsWith('-')) titleDisplay = titleDisplay.substring(1).trim();
       
+      const photoCount = item.trip.metadata?.photo_count || 0;
+      const countDisplay = photoCount > 0 ? `<span style="font-size:12px; color:#888; margin-left:4px;">(${photoCount}장)</span>` : '';
+
       const fullTitle = `
         <span class="inline-editable-toc-dest" data-trip-id="${item.trip.id}" title="클릭하여 장소 수정" style="color:var(--color-primary); font-weight:600; cursor:pointer;">${loc}</span>
         <span style="opacity:0.5; margin:0 4px;">—</span>
-        ${titleDisplay}`;
+        ${titleDisplay} ${countDisplay}`;
       tocHTML += `
         <div class="toc-item" data-trip-id="${item.trip.id}">
           <span class="toc-item-title">(${item.index}) ${fullTitle}</span>
@@ -1730,6 +1733,46 @@ function showTripMap(tripId) {
     return;
   }
 
+  // 묶인 사진 중 첫 번째 사진만 대표로 마커 표시
+  const trip = state.trips.find(t => t.id === tripId);
+  const overrides = trip?.metadata?.group_overrides || {};
+  const representativePhotos = [];
+  let currentGroup = [];
+
+  gpsPhotos.forEach(p => {
+    if (currentGroup.length === 0) {
+      currentGroup.push(p);
+      return;
+    }
+    const lastP = currentGroup[currentGroup.length - 1];
+    const pGroupId = overrides[p.id];
+    const lastPGroupId = overrides[lastP.id];
+    let shouldGroup = false;
+
+    if (pGroupId && lastPGroupId && pGroupId === lastPGroupId) {
+      shouldGroup = true;
+    } else if (pGroupId || lastPGroupId) {
+      shouldGroup = false;
+    } else {
+      const t1 = new Date(lastP.taken_at || 0).getTime();
+      const t2 = new Date(p.taken_at || 0).getTime();
+      const diffMs = Math.abs(t2 - t1);
+      if (!isNaN(diffMs)) {
+        shouldGroup = (diffMs <= 3 * 60 * 1000); // 3분 이내면 같은 그룹
+      } else {
+        shouldGroup = false;
+      }
+    }
+
+    if (shouldGroup) {
+      currentGroup.push(p);
+    } else {
+      representativePhotos.push(currentGroup[0]); // 이전 그룹의 첫 사진만 대표로 추가
+      currentGroup = [p];
+    }
+  });
+  if (currentGroup.length > 0) representativePhotos.push(currentGroup[0]);
+
   const modal = document.getElementById('mapModalOverlay');
   if (modal) modal.classList.add('open');
 
@@ -1751,7 +1794,7 @@ function showTripMap(tripId) {
 
     const latlngs = [];
 
-    gpsPhotos.forEach((p, idx) => {
+    representativePhotos.forEach((p, idx) => {
       const latlng = [p.latitude, p.longitude];
       latlngs.push(latlng);
 

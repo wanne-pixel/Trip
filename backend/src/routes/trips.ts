@@ -35,7 +35,7 @@ tripsRouter.get('/', async (_req: Request, res: Response) => {
   try {
     const { data, error } = await supabase
       .from('trips')
-      .select('*')
+      .select('*, photos(id)')
       .order('created_at', { ascending: false });
 
     if (error) {
@@ -43,7 +43,13 @@ tripsRouter.get('/', async (_req: Request, res: Response) => {
       return res.status(500).json(response);
     }
 
-    const response: ApiResponse<Trip[]> = { success: true, data: (data as Trip[]) ?? [] };
+    const tripsWithCount = (data as any[]).map(t => {
+      const photo_count = t.photos ? t.photos.length : 0;
+      delete t.photos;
+      return { ...t, metadata: { ...t.metadata, photo_count } };
+    });
+
+    const response: ApiResponse<Trip[]> = { success: true, data: tripsWithCount as Trip[] };
     return res.json(response);
   } catch (err) {
     const response: ApiResponse<never> = { success: false, error: (err as Error).message };
