@@ -1800,6 +1800,12 @@ function showTripMap(tripId) {
 
       // 마커 추가
       const marker = L.marker(latlng).addTo(map);
+
+      if (idx === 0) {
+        marker.bindTooltip("🏁 출발", { permanent: true, direction: 'top', offset: [0, -20] });
+      } else if (idx === representativePhotos.length - 1 && representativePhotos.length > 1) {
+        marker.bindTooltip("🚩 도착", { permanent: true, direction: 'top', offset: [0, -20] });
+      }
       
       // 팝업 컨텐츠 (이미지 클릭 시 구글 지도로 새 창 열기)
       const timeStr = p.taken_at ? new Date(p.taken_at).toLocaleString('ko-KR', { month:'short', day:'numeric', hour:'numeric', minute:'numeric' }) : '';
@@ -1815,13 +1821,9 @@ function showTripMap(tripId) {
       marker.bindPopup(popupHtml, { minWidth: 150, closeButton: false });
     });
 
-    // 동선 폴리라인 연결 (시작점과 끝점만 잇는 심플한 직선)
+    // 동선 폴리라인 연결 (시간 순서대로 전체 연결)
     if (latlngs.length > 1) {
-      const startPoint = latlngs[0];
-      const endPoint = latlngs[latlngs.length - 1];
-      const simplePath = [startPoint, endPoint];
-
-      const polyline = L.polyline(simplePath, {
+      const polyline = L.polyline(latlngs, {
         color: 'var(--color-leather)',
         weight: 3,
         opacity: 0.8,
