@@ -211,8 +211,15 @@ function updatePageFlips() {
 
 function flipToPage(pageId) {
   state.currentPage = pageId;
-  updatePageFlips();
   const isTrip = pageId !== 'cover' && pageId !== 'index';
+
+  if (!isTrip && state.isEditMode) {
+    state.isEditMode = false;
+    renderApp();
+    return;
+  }
+
+  updatePageFlips();
   if (isTrip && !state.tripPhotos[pageId]) {
     loadTripPhotos(pageId);
   }
@@ -494,6 +501,11 @@ function renderTimeline(tripId) {
   });
   if (currentGroup.length > 0) groups.push(currentGroup);
 
+  // 대표 사진(is_cover)이 그룹의 맨 앞으로 오도록 정렬
+  groups.forEach(g => {
+    g.sort((a, b) => (b.metadata?.is_cover ? 1 : 0) - (a.metadata?.is_cover ? 1 : 0));
+  });
+
   const isEdit = state.isEditMode;
 
   groups.forEach((group, groupIndex) => {
@@ -504,7 +516,7 @@ function renderTimeline(tripId) {
     const sliderHtml = group.map((gp, i) => `
       <div class="photo-slide ${isEdit ? 'is-edit' : ''}" id="photo-item-${gp.id}">
         ${gp.storage_path
-          ? `<img class="timeline-photo-img" src="${gp.storage_path}" alt="${gp.original_filename}">`
+          ? `<img class="timeline-photo-img" src="${gp.storage_path}" alt="${gp.original_filename}" onclick="${!isEdit ? `openLightbox('${gp.storage_path}')` : ''}" ${!isEdit ? 'style="cursor:pointer;" title="전체화면 보기"' : ''}>`
           : `<div class="timeline-photo-placeholder">🖼️<span>${gp.original_filename}</span></div>`
         }
         ${group.length > 1 ? `<div class="slide-counter">${i + 1} / ${group.length}</div>` : ''}
@@ -512,6 +524,7 @@ function renderTimeline(tripId) {
                     <button class="photo-action-btn move-up-btn" data-photo-id="${gp.id}" data-trip-id="${gp.trip_id}" title="앞으로 이동" style="font-size:16px;">⬆️</button>
                     <button class="photo-action-btn move-down-btn" data-photo-id="${gp.id}" data-trip-id="${gp.trip_id}" title="뒤로 이동" style="font-size:16px;">⬇️</button>` : ''}
         ${(isEdit && group.length > 1) ? `<button class="photo-action-btn slide-split-btn" data-photo-id="${gp.id}" data-trip-id="${gp.trip_id}" title="따로 분리">✂️</button>` : ''}
+        ${(isEdit && group.length > 1 && !gp.metadata?.is_cover) ? `<button class="photo-action-btn make-cover-btn" data-photo-id="${gp.id}" data-trip-id="${gp.trip_id}" title="대표 사진으로 지정">🌟</button>` : ''}
       </div>
     `).join('');
 
@@ -958,6 +971,11 @@ function attachEventListeners() {
   });
   document.querySelectorAll('.move-down-btn').forEach(btn => {
     btn.addEventListener('click', handleMoveDown);
+  });
+
+  // ── v2.14 대표 사진 지정 버튼 ────────────────────────────────
+  document.querySelectorAll('.make-cover-btn').forEach(btn => {
+    btn.addEventListener('click', handleMakeCover);
   });
 
   // ── 미분류 서랍 토글 ──────────────────────────────────
@@ -1842,4 +1860,57 @@ function showTripMap(tripId) {
 function closeTripMap() {
   const modal = document.getElementById('mapModalOverlay');
   if (modal) modal.classList.remove('open');
+}
+
+/* ── v2.14 대표 사진 설정 ────────────────────────────────── */
+async function handleMakeCover(e) {
+  const btn = e.currentTarget;
+  const photoId = btn.dataset.photoId;
+  const tripId = btn.dataset.tripId;
+
+  // Optimistic UI update
+  const photos = state.tripPhotos[tripId];
+  if (!photos) return;
+  const p = photos.find(x => x.id === photoId);
+  if (p) {
+    if (!p.metadata) p.metadata = {};
+    p.metadata.is_cover = true;
+  }
+  renderApp();
+  showToast('🌟 대표 사진으로 지정되었습니다.');
+
+  try {
+    await fetch(`${API_BASE_URL}/photos/${photoId}/metadata`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ metadata: { is_cover: true } })
+    });
+  } catch (err) {
+    console.error(err);
+  }
+}
+
+/* ── v2.14 Lightbox 전체화면 ─────────────────────────────── */
+function openLightbox(imgSrc) {
+  let overlay = document.getElementById('lightboxOverlay');
+  if (!overlay) {
+    overlay = document.createElement('div');
+    overlay.id = 'lightboxOverlay';
+    overlay.className = 'lightbox-overlay';
+    overlay.innerHTML = `
+      <span class="lightbox-close" onclick="closeLightbox()">&times;</span>
+      <img class="lightbox-img" id="lightboxImg" src="">
+    `;
+    document.body.appendChild(overlay);
+    overlay.addEventListener('click', (e) => {
+      if (e.target === overlay) closeLightbox();
+    });
+  }
+  document.getElementById('lightboxImg').src = imgSrc;
+  overlay.classList.add('open');
+}
+
+function closeLightbox() {
+  const overlay = document.getElementById('lightboxOverlay');
+  if (overlay) overlay.classList.remove('open');
 }

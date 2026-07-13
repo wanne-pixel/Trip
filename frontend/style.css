@@ -877,3 +877,57 @@ img { display: block; width: 100%; object-fit: cover; }
 .meta-input-text { flex: 2; font-size: 12px; padding: 6px; border-radius: 6px; border: 1px solid var(--color-border); background: var(--color-surface); outline: none; }
 .meta-input-text:focus, .meta-input-select:focus { border-color: var(--color-gold); }
 .meta-input-memo { flex: 1; }
+
+/* ── v2.14 Lightbox 전체화면 ───────────────────────────── */
+.lightbox-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.9);
+  z-index: 10000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.3s ease;
+}
+.lightbox-overlay.open {
+  opacity: 1;
+  pointer-events: auto;
+}
+.lightbox-img {
+  max-width: 90%;
+  max-height: 90%;
+  object-fit: contain;
+  border-radius: 8px;
+  box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+  transform: scale(0.95);
+  transition: transform 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+.lightbox-overlay.open .lightbox-img {
+  transform: scale(1);
+}
+.lightbox-close {
+  position: absolute;
+  top: 20px;
+  right: 30px;
+  font-size: 40px;
+  color: white;
+  cursor: pointer;
+  opacity: 0.7;
+  transition: opacity 0.2s;
+}
+.lightbox-close:hover {
+  opacity: 1;
+}
+
+/* ── v2.14 대표 지정 버튼 ──────────────────────────────── */
+.make-cover-btn {
+  font-size: 16px;
+  filter: grayscale(100%);
+  opacity: 0.7;
+}
+.make-cover-btn:hover {
+  filter: grayscale(0%);
+  opacity: 1;
+}
