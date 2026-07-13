@@ -405,7 +405,7 @@ tripsRouter.post(
   '/from-photos',
   uploadMulti.fields([{ name: 'photos', maxCount: 200 }, { name: 'exif_chunks', maxCount: 200 }]),
   async (req: Request, res: Response) => {
-    const files = (req.files as any)?.['photos'] as Express.Multer.File[] | undefined;
+    let files = (req.files as any)?.['photos'] as Express.Multer.File[] | undefined;
     const exifChunks = (req.files as any)?.['exif_chunks'] as Express.Multer.File[] | undefined;
 
     if (!files || files.length === 0) {
@@ -631,7 +631,7 @@ tripsRouter.post(
   uploadMulti.fields([{ name: 'photos', maxCount: 200 }, { name: 'exif_chunks', maxCount: 200 }]),
   async (req: Request<{ id: string }>, res: Response) => {
     const tripId = req.params.id;
-    const files = (req.files as any)?.['photos'] as Express.Multer.File[] | undefined;
+    let files = (req.files as any)?.['photos'] as Express.Multer.File[] | undefined;
     const exifChunks = (req.files as any)?.['exif_chunks'] as Express.Multer.File[] | undefined;
 
     if (!files || files.length === 0) {
