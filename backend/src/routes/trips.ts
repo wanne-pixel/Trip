@@ -463,7 +463,7 @@ tripsRouter.post(
         }
         console.warn(`[TripsRoute/from-photos] 파일[${idx}] 메타 추출 실패 — FALLBACK:`, result.reason);
         return {
-          file: files[idx],
+          file: files![idx],
           exif: { taken_at: null, latitude: null, longitude: null, classified: false } as ExifResult,
           vision: null as VisionTags | null,
         };
@@ -711,7 +711,7 @@ tripsRouter.post(
         }
         console.warn(`[TripsRoute/:id/photos] 파일[${idx}] 메타 추출 실패 — FALLBACK:`, result.reason);
         return {
-          file: files[idx],
+          file: files![idx],
           exif: { taken_at: null, latitude: null, longitude: null, classified: false } as ExifResult,
           vision: null as VisionTags | null,
         };
