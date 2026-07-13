@@ -37,15 +37,22 @@ export async function extractExif(buffer: Buffer): Promise<ExifResult> {
 
     // 촬영 시각 파싱
     let taken_at: string | null = null;
+    let rawDateStr = '';
+
     if (exif.DateTimeOriginal instanceof Date) {
-      taken_at = exif.DateTimeOriginal.toISOString();
+      // exifr가 타임존 없이 파싱하여 Z를 붙여 반환할 경우, 실제 적힌 '시각' 자체만 추출
+      rawDateStr = exif.DateTimeOriginal.toISOString().replace('.000Z', '').replace('Z', '');
     } else if (typeof exif.DateTimeOriginal === 'string') {
-      // "YYYY:MM:DD HH:MM:SS" 형식을 ISO 8601로 변환
-      const normalized = (exif.DateTimeOriginal as string).replace(
-        /^(\d{4}):(\d{2}):(\d{2})/,
-        '$1-$2-$3'
-      );
-      const parsed = new Date(normalized);
+      // "YYYY:MM:DD HH:MM:SS" 형식을 "YYYY-MM-DDTHH:MM:SS"로 변환
+      rawDateStr = (exif.DateTimeOriginal as string)
+        .replace(/^(\d{4}):(\d{2}):(\d{2})/, '$1-$2-$3')
+        .replace(' ', 'T');
+    }
+
+    if (rawDateStr) {
+      // 스마트폰 EXIF에는 타임존이 없으므로, 무조건 한국 시간(KST, +09:00) 기준으로 해석하도록 강제 적용
+      const kstString = `${rawDateStr}+09:00`;
+      const parsed = new Date(kstString);
       if (!isNaN(parsed.getTime())) {
         taken_at = parsed.toISOString();
       }
