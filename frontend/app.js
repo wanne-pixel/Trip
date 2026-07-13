@@ -1924,31 +1924,75 @@ function openLightbox(imgSrc) {
       updateLightboxTransform(img);
     }, { passive: false });
 
-    // 드래그 이동 (Pan)
-    img.addEventListener('mousedown', (e) => {
-      isPanning = true;
-      startPanX = e.clientX - lightboxPanX;
-      startPanY = e.clientY - lightboxPanY;
-      img.style.cursor = 'grabbing';
-      e.preventDefault();
-    });
-    window.addEventListener('mousemove', (e) => {
-      if (!isPanning) return;
-      lightboxPanX = e.clientX - startPanX;
-      lightboxPanY = e.clientY - startPanY;
-      updateLightboxTransform(img);
-    });
-    window.addEventListener('mouseup', () => {
+    // 네이티브 이미지 드래그 방지 (데스크탑에서 드래그 안 되는 문제 해결)
+    img.ondragstart = () => false;
+
+    let initialDistance = 0;
+    let initialScale = 1;
+
+    const handlePointerDown = (e) => {
+      if (e.touches && e.touches.length === 2) {
+        // Pinch zoom 시작
+        initialDistance = Math.hypot(
+          e.touches[0].clientX - e.touches[1].clientX,
+          e.touches[0].clientY - e.touches[1].clientY
+        );
+        initialScale = lightboxScale;
+      } else {
+        // Pan 시작
+        isPanning = true;
+        const clientX = e.touches ? e.touches[0].clientX : e.clientX;
+        const clientY = e.touches ? e.touches[0].clientY : e.clientY;
+        startPanX = clientX - lightboxPanX;
+        startPanY = clientY - lightboxPanY;
+        img.style.cursor = 'grabbing';
+      }
+    };
+
+    const handlePointerMove = (e) => {
+      if (e.touches && e.touches.length === 2) {
+        // Pinch zoom 중
+        e.preventDefault(); // 스크롤 등 기본 동작 방지
+        const currentDistance = Math.hypot(
+          e.touches[0].clientX - e.touches[1].clientX,
+          e.touches[0].clientY - e.touches[1].clientY
+        );
+        lightboxScale = Math.min(Math.max(initialScale * (currentDistance / initialDistance), 0.5), 5);
+        updateLightboxTransform(img);
+      } else if (isPanning) {
+        // Pan 중
+        e.preventDefault(); // 스크롤 등 기본 동작 방지
+        const clientX = e.touches ? e.touches[0].clientX : e.clientX;
+        const clientY = e.touches ? e.touches[0].clientY : e.clientY;
+        lightboxPanX = clientX - startPanX;
+        lightboxPanY = clientY - startPanY;
+        updateLightboxTransform(img);
+      }
+    };
+
+    const handlePointerUp = () => {
       isPanning = false;
       img.style.cursor = 'grab';
-    });
+    };
+
+    // 마우스 이벤트 바인딩
+    img.addEventListener('mousedown', handlePointerDown);
+    window.addEventListener('mousemove', handlePointerMove, { passive: false });
+    window.addEventListener('mouseup', handlePointerUp);
+
+    // 모바일 터치 이벤트 바인딩
+    img.addEventListener('touchstart', handlePointerDown, { passive: false });
+    window.addEventListener('touchmove', handlePointerMove, { passive: false });
+    window.addEventListener('touchend', handlePointerUp);
+    window.addEventListener('touchcancel', handlePointerUp);
     
-    // 더블클릭 시 초기화
+    // 더블클릭 (데스크탑) / 더블탭 (모바일에서는 보통 dblclick으로도 트리거됨) 시 초기화
     img.addEventListener('dblclick', () => {
       resetLightboxTransform(img);
     });
 
     overlay.addEventListener('click', (e) => {
+      // 이미지 바깥 영역을 클릭했을 때만 닫기
       if (e.target === overlay) closeLightbox();
     });
     
