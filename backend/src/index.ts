@@ -98,6 +98,8 @@ const server = app.listen(PORT, () => {
   console.log(`   POST   /api/photos/upload`);
   console.log(`   DELETE /api/photos/:id            ← v2.1: 사진 단건 삭제`);
   console.log(`   GET    /api/photos/unclassified`);
+  console.log(`   GET    /api/photos/stats          ← v3.9: 통계 대시보드`);
+  console.log(`   GET    /api/photos/memories       ← v3.9: 1년 전 오늘`);
   console.log(`   GET    /api/photos?trip_id=...    ← v2.0: taken_at ASC, NULL LAST 정렬`);
 });
 

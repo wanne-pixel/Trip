@@ -62,3 +62,4 @@
 - [x] v3.6 - 라이트박스 터치 줌/이동 및 CSS 레이아웃 복구 완료 (Agent C)
 - [x] v3.7 - 음식 사진 갤러리 필터 변경 (AI vision_tags -> 사용자 수동 지정 metadata->>manual_category)
 - [x] v3.8 - 품질 개선 5종: EXIF 타임존 GPS 기반 자동 판별(해외 사진 현지 시각 표시), photo_count 쿼리 최적화, 업로드 로직 공통 헬퍼 통합, 사진 목록 limit/offset 페이지네이션, 문서·임시파일 정리 (Claude)
+- [x] v3.9 - 목차 페이지 여행 통계 대시보드(여행/사진/여행지/일수 + 카테고리 분포) 및 "1년 전 오늘" 추억 배너 구현 — GET /api/photos/stats, /api/photos/memories 추가 (Claude)

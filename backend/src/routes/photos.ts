@@ -275,6 +275,104 @@ photosRouter.get('/locations', async (_req: Request, res: Response) => {
 });
 
 // ─────────────────────────────────────────────
+// GET /api/photos/stats — 전체 사진 통계 (v3.9: 표지 대시보드용)
+// head-count 쿼리만 사용 — 사진 데이터 전송 없이 개수만 집계
+// ─────────────────────────────────────────────
+const MANUAL_CATEGORIES = ['맛집', '숙소', '풍경', '액티비티', '카페', '기타'];
+
+photosRouter.get('/stats', async (_req: Request, res: Response) => {
+  try {
+    const runCount = async (build: any): Promise<number> => {
+      const { count, error } = await build;
+      if (error) throw new Error(error.message);
+      return count ?? 0;
+    };
+
+    const base = () => supabase.from('photos').select('id', { count: 'exact', head: true });
+
+    const [total_photos, gps_photos, ...catCounts] = await Promise.all([
+      runCount(base()),
+      runCount(base().not('latitude', 'is', null)),
+      ...MANUAL_CATEGORIES.map((c) => runCount(base().eq('metadata->>manual_category', c))),
+    ]);
+
+    const category_counts: Record<string, number> = {};
+    MANUAL_CATEGORIES.forEach((c, i) => {
+      category_counts[c] = catCounts[i];
+    });
+
+    return res.json({ success: true, data: { total_photos, gps_photos, category_counts } });
+  } catch (err) {
+    // Rule 2: 실패해도 안전한 JSON 응답
+    const response: ApiResponse<never> = { success: false, error: (err as Error).message };
+    return res.status(500).json(response);
+  }
+});
+
+// ─────────────────────────────────────────────
+// GET /api/photos/memories?date=YYYY-MM-DD — "1년 전 오늘" (v3.9)
+// 기준 날짜와 월·일이 ±3일 이내이면서 과거 연도에 촬영된 사진 반환
+// 촬영지 현지 시각(metadata.taken_at_local)이 있으면 그 기준으로 비교
+// ─────────────────────────────────────────────
+photosRouter.get('/memories', async (req: Request, res: Response) => {
+  try {
+    const dateParam = typeof req.query.date === 'string' ? req.query.date : '';
+    const baseDate = dateParam ? new Date(`${dateParam}T00:00:00`) : new Date();
+
+    if (isNaN(baseDate.getTime())) {
+      const response: ApiResponse<never> = { success: false, error: 'date 파라미터 형식이 올바르지 않습니다 (YYYY-MM-DD).' };
+      return res.status(400).json(response);
+    }
+
+    const { data, error } = await supabase
+      .from('photos')
+      .select('id, trip_id, storage_path, taken_at, metadata')
+      .not('taken_at', 'is', null);
+
+    if (error) {
+      const response: ApiResponse<never> = { success: false, error: error.message };
+      return res.status(500).json(response);
+    }
+
+    const WINDOW_DAYS = 3;
+    const MAX_RESULTS = 12;
+    const msPerDay = 1000 * 60 * 60 * 24;
+    const curYear = baseDate.getFullYear();
+    const baseMidnight = new Date(curYear, baseDate.getMonth(), baseDate.getDate()).getTime();
+
+    const matches = (data ?? [])
+      .map((p: any) => {
+        // 촬영지 현지 시각 우선 (v3.8 metadata), 없으면 taken_at
+        const local = p.metadata?.taken_at_local as string | undefined;
+        const d = local ? new Date(local) : new Date(p.taken_at);
+        if (isNaN(d.getTime())) return null;
+
+        const photoYear = d.getFullYear();
+        if (photoYear >= curYear) return null; // 과거 연도만
+
+        // 사진의 월·일을 올해로 투영하여 날짜 차이 계산 (연말·연초 경계 래핑 처리)
+        const projected = new Date(curYear, d.getMonth(), d.getDate()).getTime();
+        const rawDiff = Math.abs(projected - baseMidnight) / msPerDay;
+        const diffDays = Math.min(rawDiff, 365 - rawDiff);
+        if (diffDays > WINDOW_DAYS) return null;
+
+        return { ...p, years_ago: curYear - photoYear, _diff: diffDays };
+      })
+      .filter((p: any) => p !== null)
+      // 날짜가 가까운 순 → 최근 연도 순
+      .sort((a: any, b: any) => a._diff - b._diff || a.years_ago - b.years_ago)
+      .slice(0, MAX_RESULTS)
+      .map(({ _diff, ...rest }: any) => rest);
+
+    return res.json({ success: true, data: matches });
+  } catch (err) {
+    // Rule 2: 실패해도 안전한 JSON 응답
+    const response: ApiResponse<never> = { success: false, error: (err as Error).message };
+    return res.status(500).json(response);
+  }
+});
+
+// ─────────────────────────────────────────────
 // GET /api/photos — 특정 trip의 사진 목록 조회 (선택적 trip_id 필터)
 // TASK_AgentB_002: taken_at ASC 정렬 보강 (NULL은 맨 뒤 — 미분류 사진)
 // v3.8: 선택적 limit/offset 페이지네이션 (미지정 시 기존과 동일하게 전체 반환)

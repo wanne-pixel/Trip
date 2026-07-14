@@ -168,6 +168,26 @@ async function fetchPhotosByCategory(category) {
   return json.data;
 }
 
+/** GET /api/photos/stats → 전체 사진 통계 (v3.9) */
+async function fetchPhotoStats() {
+  const res = await fetch(`${API_BASE_URL}/photos/stats`);
+  if (!res.ok) throw new Error(`통계 로드 오류: ${res.status}`);
+  const json = await res.json();
+  if (!json.success) throw new Error(json.error || '통계를 불러오지 못했습니다.');
+  return json.data;
+}
+
+/** GET /api/photos/memories → 과거 같은 날짜(±3일) 사진 (v3.9) */
+async function fetchMemories() {
+  const now = new Date();
+  const dateStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+  const res = await fetch(`${API_BASE_URL}/photos/memories?date=${dateStr}`);
+  if (!res.ok) throw new Error(`추억 로드 오류: ${res.status}`);
+  const json = await res.json();
+  if (!json.success) throw new Error(json.error || '추억을 불러오지 못했습니다.');
+  return json.data;
+}
+
 /** PATCH /api/photos/:id/metadata → 메타데이터 수정 */
 async function patchPhotoMetadata(photoId, payload) {
   const res = await fetch(`${API_BASE_URL}/photos/${photoId}/metadata`, {
@@ -193,7 +213,9 @@ const state = {
   loadingMsg: '',
   mapInstance: null, // v2.8 지도 인스턴스
   isEditMode: false,
-  selectedDay: {}
+  selectedDay: {},
+  stats: null,     // v3.9 통계 대시보드 데이터
+  memories: null   // v3.9 "1년 전 오늘" 사진 배열
 };
 
 /* ──────────────────────────────────────────────────────────
@@ -353,6 +375,97 @@ function renderCoverPage() {
   `;
 }
 
+/* ── v3.9: 여행 통계 대시보드 ── */
+function renderStatsDashboard() {
+  if (state.trips.length === 0) return '';
+
+  const totalTrips = state.trips.length;
+  const totalPhotos = state.trips.reduce((sum, t) => sum + (t.metadata?.photo_count || 0), 0);
+
+  // 방문한 곳: destination/location 고유값 개수
+  const places = new Set(
+    state.trips
+      .map(t => (t.metadata?.destination || t.metadata?.location || '').trim())
+      .filter(v => v && v !== '어딘가')
+  ).size;
+
+  // 총 여행 일수: description의 "(N박 M일)" / "당일치기" 파싱
+  let totalDays = 0;
+  state.trips.forEach(t => {
+    const desc = t.description || '';
+    const m = desc.match(/\d+박\s*(\d+)일/);
+    if (m) totalDays += parseInt(m[1], 10);
+    else if (desc.includes('당일치기')) totalDays += 1;
+  });
+
+  const cards = [
+    { value: totalTrips, label: '번의 여행' },
+    { value: totalPhotos, label: '장의 사진' },
+    ...(places > 0 ? [{ value: places, label: '곳의 여행지' }] : []),
+    ...(totalDays > 0 ? [{ value: totalDays, label: '일의 기록' }] : []),
+  ];
+
+  const cardsHtml = cards.map(c => `
+    <div class="stat-card">
+      <div class="stat-value">${c.value.toLocaleString('ko-KR')}</div>
+      <div class="stat-label">${c.label}</div>
+    </div>`).join('');
+
+  // 카테고리 분포 칩 (stats API 로드 완료 시에만, 0건 제외·많은 순)
+  let chipsHtml = '';
+  if (state.stats?.category_counts) {
+    const catEmoji = { '맛집': '🍜', '숙소': '🏨', '풍경': '🏞', '액티비티': '🏄', '카페': '☕', '기타': '📌' };
+    const chips = Object.entries(state.stats.category_counts)
+      .filter(([, n]) => n > 0)
+      .sort((a, b) => b[1] - a[1])
+      .map(([cat, n]) => `<span class="stat-chip">${catEmoji[cat] || '📌'} ${cat} ${n}</span>`)
+      .join('');
+    if (chips) chipsHtml = `<div class="stats-chips">${chips}</div>`;
+  }
+
+  return `
+    <div class="stats-dashboard">
+      <div class="stats-grid">${cardsHtml}</div>
+      ${chipsHtml}
+    </div>`;
+}
+
+/* ── v3.9: "1년 전 오늘" 추억 배너 ── */
+function renderMemoriesBanner() {
+  const mems = state.memories;
+  if (!mems || mems.length === 0) return '';
+
+  const first = mems[0];
+  const trip = state.trips.find(t => t.id === first.trip_id);
+  const d = photoLocalDate(first);
+  const dateStr = d ? d.toLocaleDateString('ko-KR', { year: 'numeric', month: 'long', day: 'numeric' }) : '';
+  const yearsAgo = first.years_ago || 1;
+
+  // 대표 썸네일 최대 3장 (같은 여행 우선)
+  const thumbs = mems.slice(0, 3)
+    .map(p => `<img class="memories-thumb" src="${p.storage_path}" loading="lazy" alt="">`)
+    .join('');
+
+  return `
+    <div class="memories-banner" onclick="openMemoryTrip('${first.trip_id}')" title="추억 보러 가기">
+      <div class="memories-thumbs">${thumbs}</div>
+      <div class="memories-text">
+        <div class="memories-title">✨ ${yearsAgo}년 전 오늘의 추억</div>
+        <div class="memories-sub">${dateStr}${trip ? ` · ${trip.title}` : ''}</div>
+      </div>
+      <span class="memories-arrow">›</span>
+    </div>`;
+}
+
+window.openMemoryTrip = function(tripId) {
+  const trip = state.trips.find(t => t.id === tripId);
+  if (!trip) {
+    showToast('해당 여행을 찾을 수 없습니다.', true);
+    return;
+  }
+  flipToPage(tripId);
+};
+
 function renderTOCPage() {
   const groups = {};
 
@@ -432,6 +545,8 @@ function renderTOCPage() {
         ${renderHeader('index')}
         
         <div class="toc-container">
+          ${renderMemoriesBanner()}
+          ${renderStatsDashboard()}
           <div class="toc-actions">
             <button class="btn-toc-action" onclick="showGlobalMap()">🗺️ 내가 다녀온 곳들</button>
             <button class="btn-toc-action" onclick="showCategoryGallery('맛집')">😋 음식 사진 모아보기</button>
@@ -1833,6 +1948,29 @@ async function init() {
     return;
   }
   renderApp();
+  loadTocExtras(); // v3.9: 통계·추억은 비동기 로드 (실패해도 앱 동작에 영향 없음)
+}
+
+/* v3.9: 통계 대시보드 + "1년 전 오늘" 데이터 병렬 로드 (Rule 2: 실패 시 조용히 무시) */
+async function loadTocExtras() {
+  const [statsResult, memsResult] = await Promise.allSettled([fetchPhotoStats(), fetchMemories()]);
+
+  let changed = false;
+  if (statsResult.status === 'fulfilled') {
+    state.stats = statsResult.value;
+    changed = true;
+  } else {
+    console.warn('[loadTocExtras] 통계 로드 실패 (무시):', statsResult.reason);
+  }
+  if (memsResult.status === 'fulfilled') {
+    state.memories = memsResult.value;
+    changed = true;
+  } else {
+    console.warn('[loadTocExtras] 추억 로드 실패 (무시):', memsResult.reason);
+  }
+
+  // 편집 중이 아닐 때만 다시 그려서 입력 상태를 방해하지 않음
+  if (changed && !state.isEditMode) renderApp();
 }
 
 init();

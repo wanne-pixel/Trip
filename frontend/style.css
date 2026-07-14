@@ -1052,3 +1052,110 @@ img { display: block; width: 100%; object-fit: cover; }
   transform: translateY(-1px);
   box-shadow: 0 4px 12px rgba(0,0,0,0.08);
 }
+
+/* ═══════════════════════════════════════════
+   v3.9 — 여행 통계 대시보드 & "1년 전 오늘" 배너
+   ═══════════════════════════════════════════ */
+
+/* ── 추억 배너 ── */
+.memories-banner {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  background: linear-gradient(135deg, #FDF6E9 0%, var(--color-surface-alt) 100%);
+  border: 1px solid var(--color-gold);
+  border-radius: var(--radius-card);
+  padding: 12px 14px;
+  margin-bottom: 16px;
+  cursor: pointer;
+  box-shadow: var(--shadow-card);
+  transition: all var(--transition-base);
+}
+.memories-banner:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 8px 20px rgba(212, 175, 55, 0.25);
+}
+.memories-thumbs {
+  display: flex;
+  flex-shrink: 0;
+}
+.memories-thumb {
+  width: 44px;
+  height: 44px;
+  object-fit: cover;
+  border-radius: 10px;
+  border: 2px solid #fff;
+  box-shadow: 0 2px 6px rgba(44, 24, 16, 0.18);
+}
+.memories-thumb:not(:first-child) {
+  margin-left: -14px;
+}
+.memories-text {
+  flex: 1;
+  min-width: 0;
+}
+.memories-title {
+  font-weight: 700;
+  font-size: 14px;
+  color: var(--color-leather);
+}
+.memories-sub {
+  font-size: 12px;
+  color: var(--color-text-secondary);
+  margin-top: 2px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.memories-arrow {
+  font-size: 22px;
+  color: var(--color-gold-dark);
+  flex-shrink: 0;
+  padding-right: 2px;
+}
+
+/* ── 통계 대시보드 ── */
+.stats-dashboard {
+  margin-bottom: 20px;
+}
+.stats-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(80px, 1fr));
+  gap: 8px;
+}
+.stat-card {
+  background: #fff;
+  border: 1px solid var(--color-border);
+  border-radius: 12px;
+  padding: 12px 6px;
+  text-align: center;
+  box-shadow: var(--shadow-card);
+}
+.stat-value {
+  font-family: var(--font-display);
+  font-size: 22px;
+  font-weight: 700;
+  color: var(--color-leather);
+  line-height: 1.1;
+}
+.stat-label {
+  font-size: 11px;
+  color: var(--color-text-muted);
+  margin-top: 3px;
+  letter-spacing: 0.02em;
+}
+.stats-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 10px;
+}
+.stat-chip {
+  background: var(--color-surface-alt);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-badge);
+  padding: 4px 10px;
+  font-size: 12px;
+  color: var(--color-text-secondary);
+  font-weight: 500;
+}
