@@ -286,9 +286,9 @@ photosRouter.get('/', async (req: Request, res: Response) => {
       query = query.eq('trip_id', trip_id);
     }
 
-    // v2.17 카테고리별 글로벌 모아보기 필터 지원
+    // v2.17 카테고리별 글로벌 모아보기 필터 지원 (AI 비전 태그 대신 사용자가 지정한 수동 카테고리 사용)
     if (category && typeof category === 'string') {
-      query = query.eq('vision_tags->>category', category);
+      query = query.eq('metadata->>manual_category', category);
     }
 
     const { data, error } = await query;

@@ -135,24 +135,6 @@ async function deletePhoto(photoId) {
   return true;
 }
 
-/** GET /api/photos/locations → 모든 사진 위치 조회 (v2.17) */
-async function fetchGlobalLocations() {
-  const res = await fetch(`${API_BASE_URL}/photos/locations`);
-  if (!res.ok) throw new Error(`위치 데이터 로드 오류: ${res.status}`);
-  const json = await res.json();
-  if (!json.success) throw new Error(json.error || '위치 데이터를 불러오지 못했습니다.');
-  return json.data;
-}
-
-/** GET /api/photos?category=... → 특정 카테고리 사진 전체 조회 (v2.17) */
-async function fetchPhotosByCategory(category) {
-  const res = await fetch(`${API_BASE_URL}/photos?category=${category}`);
-  if (!res.ok) throw new Error(`사진 로드 오류: ${res.status}`);
-  const json = await res.json();
-  if (!json.success) throw new Error(json.error || '사진을 불러오지 못했습니다.');
-  return json.data;
-}
-
 /** PATCH /api/photos/:id/metadata → 메타데이터 수정 */
 async function patchPhotoMetadata(photoId, payload) {
   const res = await fetch(`${API_BASE_URL}/photos/${photoId}/metadata`, {
@@ -415,13 +397,7 @@ function renderTOCPage() {
     <div class="page" data-page="index" id="page-index">
       <div class="page-content">
         ${renderHeader('index')}
-        
         <div class="toc-container">
-          <div class="toc-actions">
-            <button class="btn-toc-action" onclick="showGlobalMap()">🗺️ 내가 다녀온 곳들</button>
-            <button class="btn-toc-action" onclick="showCategoryGallery('맛집')">😋 음식 사진 모아보기</button>
-          </div>
-
           <div class="toc-header">
             <div class="toc-header-line"></div>
             <div class="toc-header-title">목 차</div>
@@ -2111,117 +2087,3 @@ function closeLightbox() {
   const overlay = document.getElementById('lightboxOverlay');
   if (overlay) overlay.classList.remove('open');
 }
-
-/* ── v2.17 글로벌 맵 및 갤러리 로직 ─────────────────────── */
-let globalMapInstance = null;
-let markerClusterGroup = null;
-
-async function showGlobalMap() {
-  const modal = document.getElementById('globalMapModal');
-  modal.classList.remove('hidden');
-  
-  showLoadingOverlay('위치 데이터를 불러오는 중입니다...');
-  try {
-    const locations = await fetchGlobalLocations();
-    hideLoadingOverlay();
-    
-    if (!globalMapInstance) {
-      // Leaflet 초기화
-      globalMapInstance = L.map('globalMapContainer').setView([37.5665, 126.9780], 7); // 서울 기본
-      L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png', {
-        attribution: '&copy; OpenStreetMap &copy; CARTO'
-      }).addTo(globalMapInstance);
-      
-      markerClusterGroup = L.markerClusterGroup({
-        showCoverageOnHover: false,
-        maxClusterRadius: 50
-      });
-      globalMapInstance.addLayer(markerClusterGroup);
-    } else {
-      markerClusterGroup.clearLayers();
-    }
-    
-    // 마커 추가
-    const markers = [];
-    locations.forEach(loc => {
-      const marker = L.marker([loc.latitude, loc.longitude]);
-      // 팝업 내용 (썸네일 이미지)
-      const popupContent = document.createElement('div');
-      popupContent.innerHTML = `<img src="${loc.storage_path}" style="width:120px; height:80px; object-fit:cover; border-radius:8px; display:block;">`;
-      popupContent.style.cursor = 'pointer';
-      // 클릭 시 해당 사진 크게 보기 (Lightbox)
-      popupContent.onclick = () => {
-        // 기존 Lightbox 배열을 맞추기 위해 photo 객체 배열로 감쌉니다
-        openLightbox([{ storage_path: loc.storage_path }], 0);
-      };
-      
-      marker.bindPopup(popupContent, { minWidth: 120 });
-      markers.push(marker);
-    });
-    
-    markerClusterGroup.addLayers(markers);
-    
-    if (markers.length > 0) {
-      // 맵이 렌더링될 시간이 필요하므로 setTimeout 사용
-      setTimeout(() => {
-        globalMapInstance.invalidateSize();
-        globalMapInstance.fitBounds(markerClusterGroup.getBounds(), { padding: [50, 50] });
-      }, 300);
-    } else {
-      setTimeout(() => globalMapInstance.invalidateSize(), 300);
-    }
-    
-  } catch (err) {
-    hideLoadingOverlay();
-    showToast(`❌ 위치 데이터를 불러올 수 없습니다: ${err.message}`, true);
-    modal.classList.add('hidden');
-  }
-}
-
-async function showCategoryGallery(category) {
-  const modal = document.getElementById('globalGalleryModal');
-  modal.classList.remove('hidden');
-  
-  const container = document.getElementById('globalGalleryContainer');
-  container.innerHTML = '';
-  
-  showLoadingOverlay('사진을 모아오는 중입니다...');
-  try {
-    const photos = await fetchPhotosByCategory(category);
-    hideLoadingOverlay();
-    
-    if (photos.length === 0) {
-      container.innerHTML = `<div style="text-align:center; padding:50px; color:#888;">해당 카테고리의 사진이 없습니다.</div>`;
-      return;
-    }
-    
-    photos.forEach((photo, idx) => {
-      const item = document.createElement('div');
-      item.className = 'masonry-item';
-      
-      const img = document.createElement('img');
-      img.src = photo.storage_path;
-      img.loading = 'lazy';
-      
-      item.appendChild(img);
-      
-      // 클릭 시 확대
-      item.onclick = () => openLightbox(photos, idx);
-      
-      container.appendChild(item);
-    });
-    
-  } catch (err) {
-    hideLoadingOverlay();
-    showToast(`❌ 사진을 불러올 수 없습니다: ${err.message}`, true);
-    modal.classList.add('hidden');
-  }
-}
-
-// 모달 닫기 이벤트
-document.getElementById('btn-close-global-map')?.addEventListener('click', () => {
-  document.getElementById('globalMapModal').classList.add('hidden');
-});
-document.getElementById('btn-close-global-gallery')?.addEventListener('click', () => {
-  document.getElementById('globalGalleryModal').classList.add('hidden');
-});
