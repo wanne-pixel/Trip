@@ -14,8 +14,11 @@
     rel="stylesheet"
   />
 
-  <!-- Leaflet CSS -->
+  <!-- Leaflet CSS & MarkerCluster -->
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin="" />
+  <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.css" />
+  <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.Default.css" />
+  
   <link rel="stylesheet" href="style.css" />
 </head>
 <body>
@@ -27,10 +30,29 @@
     </div>
   </div>
 
+  <!-- Global Map Overlay -->
+  <div id="globalMapModal" class="global-modal hidden">
+    <div class="global-modal-header">
+      <h2>🗺️ 내가 다녀온 곳들</h2>
+      <button class="btn-close-modal" id="btn-close-global-map">✕</button>
+    </div>
+    <div id="globalMapContainer" class="global-map-container"></div>
+  </div>
+
+  <!-- Global Gallery Overlay -->
+  <div id="globalGalleryModal" class="global-modal hidden">
+    <div class="global-modal-header">
+      <h2>😋 음식 사진 모아보기</h2>
+      <button class="btn-close-modal" id="btn-close-global-gallery">✕</button>
+    </div>
+    <div id="globalGalleryContainer" class="global-gallery-container masonry-grid"></div>
+  </div>
+
   <!-- 이미지 압축 라이브러리 (EXIF 보존 지원) -->
   <script type="text/javascript" src="https://cdn.jsdelivr.net/npm/browser-image-compression@2.0.2/dist/browser-image-compression.js"></script>
-  <!-- Leaflet JS -->
+  <!-- Leaflet JS & MarkerCluster -->
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin=""></script>
+  <script src="https://unpkg.com/leaflet.markercluster@1.5.3/dist/leaflet.markercluster.js"></script>
   <script src="app.js"></script>
 </body>
 </html>

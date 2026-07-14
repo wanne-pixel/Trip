@@ -243,11 +243,36 @@ photosRouter.get('/unclassified', async (_req: Request, res: Response) => {
 });
 
 // ─────────────────────────────────────────────
+// GET /api/photos/locations — 모든 여행의 위치 데이터 조회 (v2.17)
+// ─────────────────────────────────────────────
+photosRouter.get('/locations', async (_req: Request, res: Response) => {
+  try {
+    const { data, error } = await supabase
+      .from('photos')
+      .select('id, trip_id, storage_path, latitude, longitude')
+      .not('latitude', 'is', null)
+      .not('longitude', 'is', null);
+
+    if (error) {
+      const response: ApiResponse<never> = { success: false, error: error.message };
+      return res.status(500).json(response);
+    }
+
+    // data format is what we want
+    const response: ApiResponse<any[]> = { success: true, data: data ?? [] };
+    return res.json(response);
+  } catch (err) {
+    const response: ApiResponse<never> = { success: false, error: (err as Error).message };
+    return res.status(500).json(response);
+  }
+});
+
+// ─────────────────────────────────────────────
 // GET /api/photos — 특정 trip의 사진 목록 조회 (선택적 trip_id 필터)
 // TASK_AgentB_002: taken_at ASC 정렬 보강 (NULL은 맨 뒤 — 미분류 사진)
 // ─────────────────────────────────────────────
 photosRouter.get('/', async (req: Request, res: Response) => {
-  const { trip_id } = req.query;
+  const { trip_id, category } = req.query;
 
   try {
     // taken_at ASC 정렬: NULL(미분류)은 항상 맨 뒤 (nullsFirst: false)
@@ -259,6 +284,11 @@ photosRouter.get('/', async (req: Request, res: Response) => {
 
     if (trip_id && typeof trip_id === 'string') {
       query = query.eq('trip_id', trip_id);
+    }
+
+    // v2.17 카테고리별 글로벌 모아보기 필터 지원
+    if (category && typeof category === 'string') {
+      query = query.eq('vision_tags->>category', category);
     }
 
     const { data, error } = await query;
