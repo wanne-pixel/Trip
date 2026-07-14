@@ -1331,6 +1331,22 @@ async function handleFilesSelected(files) {
 
     if (trip) { 
       // 여행이 생성되었다면 (즉 i=0 청크는 성공)
+      // v4.0: 모든 청크 업로드 완료 후 서버에서 최신 trip 정보를 다시 가져옴
+      // (백엔드에서 전체 사진 기준으로 여행 기간을 재계산했으므로)
+      try {
+        const refreshRes = await fetch(`${API_BASE_URL}/trips`);
+        const refreshJson = await refreshRes.json();
+        if (refreshJson.success && refreshJson.data) {
+          const updatedTrip = refreshJson.data.find(t => t.id === trip.id);
+          if (updatedTrip) {
+            // state의 trip 정보를 서버 최신 데이터로 교체
+            const idx = state.trips.findIndex(t => t.id === trip.id);
+            if (idx !== -1) state.trips[idx] = updatedTrip;
+            trip = updatedTrip;
+          }
+        }
+      } catch (e) { /* 실패해도 무시 — Rule 2 */ }
+
       if (hasError) {
         showToast(`❌ 네트워크 오류로 업로드가 중단되었습니다.\n(총 ${totalCount}장 중 ${uploadedCount}장 완료)`, true);
       } else {

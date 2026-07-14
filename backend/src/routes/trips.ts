@@ -492,44 +492,53 @@ ${metaSummary}
 // ── 내부 헬퍼: EXIF taken_at 배열로 여행 날짜 범위 문자열 계산 (v2.1) ──
 // 예시: "6월 15일 ~ 6월 17일 (2박 3일)", "6월 15일 (당일치기)", "날짜 정보 없음"
 function calculateTripDateInfo(takenAts: (string | null)[]): { description: string; startDate: string | null } {
-  const validDates: Date[] = takenAts
-    .filter((t): t is string => typeof t === 'string' && t.length > 0)
-    .map((t) => new Date(t))
-    .filter((d) => !isNaN(d.getTime()));
+  // 문자열에서 YYYY-MM-DD 날짜 부분만 추출 (타임존 파싱 오류 방지)
+  // taken_at_local: "2024-06-15T12:00:00" → "2024-06-15"
+  // taken_at (UTC): "2024-06-15T03:00:00.000Z" → UTC 기준이므로 가급적 taken_at_local 우선 사용
+  interface DateParts { year: number; month: number; day: number; original: string; }
 
-  if (validDates.length === 0) return { description: '날짜 정보 없음', startDate: null };
-
-  const minDate = new Date(Math.min(...validDates.map((d) => d.getTime())));
-  const maxDate = new Date(Math.max(...validDates.map((d) => d.getTime())));
-
-  const formatMD = (d: Date): string => {
-    const month = d.getMonth() + 1;
-    const day = d.getDate();
-    return `${month}월 ${day}일`;
-  };
-
-  const minStr = formatMD(minDate);
-  const maxStr = formatMD(maxDate);
-
-  // 같은 날인지 확인 (년·월·일 모두 비교)
-  const isSameDay =
-    minDate.getFullYear() === maxDate.getFullYear() &&
-    minDate.getMonth() === maxDate.getMonth() &&
-    minDate.getDate() === maxDate.getDate();
-
-  if (isSameDay) {
-    return { description: `${minStr} (당일치기)`, startDate: minDate.toISOString() };
+  const dateParts: DateParts[] = [];
+  for (const t of takenAts) {
+    if (!t || t.length === 0) continue;
+    // "YYYY-MM-DD" 패턴 추출 (taken_at_local은 "YYYY-MM-DDTHH:MM:SS" 형태)
+    const m = t.match(/^(\d{4})-(\d{2})-(\d{2})/);
+    if (m) {
+      dateParts.push({ year: parseInt(m[1]), month: parseInt(m[2]), day: parseInt(m[3]), original: t });
+    }
   }
 
-  // 박수 계산: 자정 기준으로 날짜 차이
-  const msPerDay = 1000 * 60 * 60 * 24;
-  const minMidnight = new Date(minDate.getFullYear(), minDate.getMonth(), minDate.getDate());
-  const maxMidnight = new Date(maxDate.getFullYear(), maxDate.getMonth(), maxDate.getDate());
-  const diffDays = Math.round((maxMidnight.getTime() - minMidnight.getTime()) / msPerDay);
-  const nights = diffDays;
-  const days = diffDays + 1;
+  if (dateParts.length === 0) return { description: '날짜 정보 없음', startDate: null };
 
-  return { description: `${minStr} ~ ${maxStr} (${nights}박 ${days}일)`, startDate: minDate.toISOString() };
+  // 숫자 비교로 min/max 찾기 (YYYYMMDD 정수로 변환)
+  const toNum = (dp: DateParts) => dp.year * 10000 + dp.month * 100 + dp.day;
+  dateParts.sort((a, b) => toNum(a) - toNum(b));
+
+  const minDP = dateParts[0];
+  const maxDP = dateParts[dateParts.length - 1];
+
+  const formatMD = (dp: DateParts): string => `${dp.month}월 ${dp.day}일`;
+
+  const minStr = formatMD(minDP);
+  const maxStr = formatMD(maxDP);
+
+  // startDate를 위한 Date 객체 (UTC 기준으로 안전하게 생성)
+  const startDate = new Date(Date.UTC(minDP.year, minDP.month - 1, minDP.day)).toISOString();
+
+  // 같은 날인지 확인
+  const isSameDay = toNum(minDP) === toNum(maxDP);
+
+  if (isSameDay) {
+    return { description: `${minStr} (당일치기)`, startDate };
+  }
+
+  // 박수 계산: 날짜 차이 (Date.UTC 사용으로 DST/timezone 영향 없음)
+  const msPerDay = 1000 * 60 * 60 * 24;
+  const minMs = Date.UTC(minDP.year, minDP.month - 1, minDP.day);
+  const maxMs = Date.UTC(maxDP.year, maxDP.month - 1, maxDP.day);
+  const nights = Math.round((maxMs - minMs) / msPerDay);
+  const days = nights + 1;
+
+  return { description: `${minStr} ~ ${maxStr} (${nights}박 ${days}일)`, startDate };
 }
 
 // ── 내부 헬퍼: 특정 여행(tripId)의 모든 사진을 조회하여 여행 기간(description, start_date) 재계산 ──
