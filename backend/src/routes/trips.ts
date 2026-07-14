@@ -532,6 +532,23 @@ function calculateTripDateInfo(takenAts: (string | null)[]): { description: stri
   return { description: `${minStr} ~ ${maxStr} (${nights}박 ${days}일)`, startDate: minDate.toISOString() };
 }
 
+// ── 내부 헬퍼: 특정 여행(tripId)의 모든 사진을 조회하여 여행 기간(description, start_date) 재계산 ──
+async function updateTripDateRange(tripId: string): Promise<void> {
+  const { data: trip } = await supabase.from('trips').select('metadata').eq('id', tripId).single();
+  if (!trip) return;
+
+  const { data: photos } = await supabase.from('photos').select('taken_at, metadata').eq('trip_id', tripId);
+  if (!photos || photos.length === 0) return;
+
+  const takenAts = photos.map(p => p.metadata?.taken_at_local || p.taken_at);
+  const dateInfo = calculateTripDateInfo(takenAts);
+
+  await supabase.from('trips').update({
+    description: dateInfo.description,
+    metadata: { ...trip.metadata, start_date: dateInfo.startDate }
+  }).eq('id', tripId);
+}
+
 tripsRouter.post(
   '/from-photos',
   uploadMulti.fields([{ name: 'photos', maxCount: 200 }, { name: 'exif_chunks', maxCount: 200 }]),
@@ -583,7 +600,7 @@ tripsRouter.post(
       const tripInfo = await generateTripInfoFromMetadata(summaries);
 
       // ── Step 3-b: EXIF taken_at 배열로 날짜 범위 description 계산 (v2.1) ──
-      const takenAts = processedFiles.map(({ exif }) => exif.taken_at);
+      const takenAts = processedFiles.map(({ exif }) => exif.taken_at_local || exif.taken_at);
       const dateInfo = calculateTripDateInfo(takenAts);
 
       // ── Step 4: trips 테이블에 새 여행 INSERT ──
@@ -716,6 +733,11 @@ tripsRouter.post(
 
       // ── Step 2: Storage 업로드 + photos 테이블 INSERT (v3.8: 공통 헬퍼) ──
       const { succeededPhotos, failedCount } = await uploadAndInsertPhotos(tripId, processedFiles);
+
+      // v4.0: 사진이 추가되었으므로 전체 사진을 기준으로 여행 기간(당일치기/N박M일)을 다시 계산
+      if (succeededPhotos.length > 0) {
+        await updateTripDateRange(tripId);
+      }
 
       // ── Step 3: 응답 반환 ──
       const responseData = {

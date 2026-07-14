@@ -347,6 +347,7 @@ function renderHeader(type, tripId) {
   let rightBtn = '';
   if (type === 'index') {
     actionBtn = `<button class="header-btn text-btn" id="btnGoCover">표지로</button>`;
+    rightBtn = `<button class="header-btn text-btn" onclick="showGlobalMap()" title="내가 다녀온 곳들" style="font-size: 16px;">🗺️</button>`;
   } else if (type === 'trip') {
     actionBtn = `<button class="header-btn text-btn" id="btnGoTOC">목차로</button>`;
     rightBtn = `
@@ -547,9 +548,7 @@ function renderTOCPage() {
         <div class="toc-container">
           ${renderMemoriesBanner()}
           ${renderStatsDashboard()}
-          <div class="toc-actions">
-            <button class="btn-toc-action" onclick="showGlobalMap()">🗺️ 내가 다녀온 곳들</button>
-            <button class="btn-toc-action" onclick="showCategoryGallery('맛집')">😋 음식 사진 모아보기</button>
+          <div class="toc-actions" style="display: none;">
           </div>
 
           <div class="toc-header">
