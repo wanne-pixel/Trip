@@ -108,6 +108,13 @@ photosRouter.post(
       const storage_path = publicUrlData.publicUrl;
 
       // ── Step 4: photos 테이블에 INSERT ──
+      // v3.8: 촬영지 현지 시각/오프셋을 metadata(JSONB)에 저장 (Rule 1 — DDL 변경 없음)
+      const photoMetadata = {
+        ...metadata,
+        ...(exifResult.taken_at_local
+          ? { taken_at_local: exifResult.taken_at_local, tz_offset: exifResult.tz_offset }
+          : {}),
+      };
       const newPhotoRow = {
         id: photoId,
         trip_id: trip_id as string,    // v2.0: NOT NULL — 이미 위에서 검증됨
@@ -118,7 +125,7 @@ photosRouter.post(
         longitude: exifResult.longitude,
         classified: exifResult.classified,
         vision_tags,
-        metadata, // Rule 1: JSONB 필드에 모든 부가정보 저장
+        metadata: photoMetadata, // Rule 1: JSONB 필드에 모든 부가정보 저장
       };
 
       const { data, error: dbError } = await supabase
@@ -270,9 +277,10 @@ photosRouter.get('/locations', async (_req: Request, res: Response) => {
 // ─────────────────────────────────────────────
 // GET /api/photos — 특정 trip의 사진 목록 조회 (선택적 trip_id 필터)
 // TASK_AgentB_002: taken_at ASC 정렬 보강 (NULL은 맨 뒤 — 미분류 사진)
+// v3.8: 선택적 limit/offset 페이지네이션 (미지정 시 기존과 동일하게 전체 반환)
 // ─────────────────────────────────────────────
 photosRouter.get('/', async (req: Request, res: Response) => {
-  const { trip_id, category } = req.query;
+  const { trip_id, category, limit, offset } = req.query;
 
   try {
     // taken_at ASC 정렬: NULL(미분류)은 항상 맨 뒤 (nullsFirst: false)
@@ -289,6 +297,14 @@ photosRouter.get('/', async (req: Request, res: Response) => {
     // v2.17 카테고리별 글로벌 모아보기 필터 지원 (AI 비전 태그 대신 사용자가 지정한 수동 카테고리 사용)
     if (category && typeof category === 'string') {
       query = query.eq('metadata->>manual_category', category);
+    }
+
+    // v3.8: 페이지네이션 — limit이 유효한 양수일 때만 적용 (기존 호출 100% 호환)
+    const parsedLimit = typeof limit === 'string' ? parseInt(limit, 10) : NaN;
+    if (Number.isFinite(parsedLimit) && parsedLimit > 0) {
+      const parsedOffset = typeof offset === 'string' ? parseInt(offset, 10) : 0;
+      const safeOffset = Number.isFinite(parsedOffset) && parsedOffset > 0 ? parsedOffset : 0;
+      query = query.range(safeOffset, safeOffset + parsedLimit - 1);
     }
 
     const { data, error } = await query;

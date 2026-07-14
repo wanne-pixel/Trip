@@ -14,7 +14,7 @@
 | **Agent A (Frontend)** | `TASK_AgentA_019` | ✅ 완료 | 사진 다중 업로드 150장 제한 상향 및 10장 단위 청크 분할 업로드 구현 |
 | **Agent A (Frontend)** | `TASK_AgentA_018` | ✅ 완료 | 여행 상단(Trip) 메타데이터 3종(동반자, 한줄평, 총점) 인라인 렌더링 및 편집 UI 구현 |
 | **Agent A (Frontend)** | `TASK_AgentA_017` | ✅ 완료 | 사진 수동 메타데이터(카테고리, 장소, 별점, 메모) 입력 및 인라인 편집 UI 구현 |
-| **Agent B (Backend)** | `TASK_AgentB_008` | ✅ 완료 | 다중 업로드 한도 200장 상향 및 백엔드 5장 단위 동시성 제어(Batch) 구현 |
+| **Agent B (Backend)** | `TASK_AgentB_008` | ✅ 완료 | 다중 업로드 한도 200장 상향 및 백엔드 3장 단위 동시성 제어(Batch) 구현 |
 
 ### 2. 현재 활성화된 로컬 서버 주소
 - 프론트엔드: http://localhost:3000 (Agent C 기동 필요)
@@ -25,7 +25,7 @@
 ## 🛠️ 시스템 정보 및 DB 스키마 정보
 - Node.js: v24.16.0
 - DB: Supabase (연동 완료)
-- Git Branch: `master` (최신 커밋: `e146adb`)
+- Git Branch: `master` (최신 커밋: `6c5c925`)
 
 ### Master/Agent 최근 구현 완료 파일
 | 파일 | 상태 |
@@ -57,6 +57,8 @@
 - [x] v3.1 - 사진 메타데이터 업데이트 API (`PATCH /api/photos/:id/metadata`) 구현 (Agent B)
 - [x] v3.2 - 사진 수동 메타데이터 입력 UI (카테고리, 장소, 별점, 메모) 구현 (Agent A)
 - [x] v3.3 - 대량 사진(150장) 10장 단위 Chunked Batch 업로드 구현 (Agent A)
-- [x] v3.4 - 백엔드 사진 업로드(최대 200장) 동시성 제어(Concurrency Limit) 5개 단위 배치 처리 구현 (Agent B)
+- [x] v3.4 - 백엔드 사진 업로드(최대 200장) 동시성 제어(Concurrency Limit) 3개 단위 배치 처리 구현 (Agent B)
 - [x] v3.5 - 글로벌 지도 뷰 및 카테고리 갤러리 UI 구현 완료
 - [x] v3.6 - 라이트박스 터치 줌/이동 및 CSS 레이아웃 복구 완료 (Agent C)
+- [x] v3.7 - 음식 사진 갤러리 필터 변경 (AI vision_tags -> 사용자 수동 지정 metadata->>manual_category)
+- [x] v3.8 - 품질 개선 5종: EXIF 타임존 GPS 기반 자동 판별(해외 사진 현지 시각 표시), photo_count 쿼리 최적화, 업로드 로직 공통 헬퍼 통합, 사진 목록 limit/offset 페이지네이션, 문서·임시파일 정리 (Claude)

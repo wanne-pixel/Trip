@@ -41,11 +41,14 @@ export type ApiResponse<T> =
   | { success: false; error: string };
 
 // EXIF 추출 결과 내부 타입
+// v3.8: 타임존 정보 추가 — DB 컬럼이 아닌 photos.metadata(JSONB)에 저장 (Rule 1)
 export interface ExifResult {
   taken_at: string | null;
   latitude: number | null;
   longitude: number | null;
   classified: boolean;
+  taken_at_local?: string | null;  // 촬영지 현지 벽시계 시각 "YYYY-MM-DDTHH:MM:SS"
+  tz_offset?: string | null;       // 적용된 UTC 오프셋 "+09:00" | "+02:00" | ...
 }
 
 // 사진 업로드 요청 Body

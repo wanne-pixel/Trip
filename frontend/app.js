@@ -7,9 +7,24 @@
    1. API 설정 (Rule 3 — API Contract)
    ────────────────────────────────────────────────────────── */
 // 로컬 개발(3000)일 때는 4000번 백엔드 호출, 배포 환경에서는 같은 도메인 사용
-const API_BASE_URL = window.location.port === '3000' 
-  ? 'http://localhost:4000/api' 
+const API_BASE_URL = window.location.port === '3000'
+  ? 'http://localhost:4000/api'
   : window.location.origin + '/api';
+
+/**
+ * v3.8: 사진의 "촬영지 현지 시각" Date 객체 반환.
+ * 백엔드가 metadata.taken_at_local(촬영지 벽시계 시각)을 저장한 경우 이를 우선 사용해
+ * 해외 여행 사진도 촬영지 기준 날짜/시각으로 표시됨.
+ * 구버전 사진(metadata 없음)은 기존처럼 taken_at 사용 — 100% 하위 호환.
+ */
+function photoLocalDate(p) {
+  const local = p?.metadata?.taken_at_local;
+  if (local) {
+    const d = new Date(local); // 오프셋 없는 문자열 → 브라우저 로컬로 해석 → 벽시계 시각 그대로 표시
+    if (!isNaN(d.getTime())) return d;
+  }
+  return p?.taken_at ? new Date(p.taken_at) : null;
+}
 
 /** GET /api/trips → Trip[] */
 async function fetchTrips() {
@@ -481,7 +496,7 @@ function renderTimeline(tripId) {
     if (!p.taken_at) {
       unknownGroup.push(p);
     } else {
-      const dateObj = new Date(p.taken_at);
+      const dateObj = photoLocalDate(p); // v3.8: 촬영지 현지 날짜 기준 Day 분리
       const dateString = dateObj.toLocaleDateString('ko-KR', { year: 'numeric', month: '2-digit', day: '2-digit' });
       const displayDate = dateObj.toLocaleDateString('ko-KR', { month: 'long', day: 'numeric' });
       if (dateString !== lastDateString) {
@@ -570,7 +585,7 @@ function renderTimeline(tripId) {
 
   groups.forEach((group, groupIndex) => {
     const firstP = group[0];
-    let dateObj = firstP.taken_at ? new Date(firstP.taken_at) : null;
+    let dateObj = photoLocalDate(firstP); // v3.8: 촬영지 현지 시각
     let tags = '';
 
     const sliderHtml = group.map((gp, i) => `
@@ -1915,7 +1930,8 @@ function showTripMap(tripId) {
       }
       
       // 팝업 컨텐츠 (이미지 클릭 시 구글 지도로 새 창 열기)
-      const timeStr = p.taken_at ? new Date(p.taken_at).toLocaleString('ko-KR', { month:'short', day:'numeric', hour:'numeric', minute:'numeric' }) : '';
+      const localD = photoLocalDate(p); // v3.8: 촬영지 현지 시각
+      const timeStr = localD ? localD.toLocaleString('ko-KR', { month:'short', day:'numeric', hour:'numeric', minute:'numeric' }) : '';
       const googleMapsUrl = `https://www.google.com/maps/search/?api=1&query=${p.latitude},${p.longitude}`;
       const popupHtml = `
         <a href="${googleMapsUrl}" target="_blank" title="구글 지도에서 열기" style="display:block; text-decoration:none;">

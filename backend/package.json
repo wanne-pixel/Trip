@@ -11,10 +11,11 @@
     "@supabase/supabase-js": "^2",
     "cors": "^2",
     "dotenv": "^16",
-    "express": "^4",
     "exifr": "^7",
+    "express": "^4",
     "multer": "^1",
     "openai": "^4",
+    "tz-lookup": "^6.1.25",
     "uuid": "^9"
   },
   "devDependencies": {

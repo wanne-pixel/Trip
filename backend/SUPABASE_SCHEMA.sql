@@ -63,7 +63,7 @@ COMMENT ON COLUMN photos.trip_id         IS 'v2.0: NOT NULL — 미분류 사진
 COMMENT ON COLUMN photos.taken_at        IS 'Rule 2: EXIF DateTimeOriginal 없으면 NULL. 앱 중단 금지.';
 COMMENT ON COLUMN photos.classified      IS 'false = 미분류 서랍(Unclassified Drawer). true = 타임라인 배치.';
 COMMENT ON COLUMN photos.vision_tags     IS 'Rule 2: OpenAI Vision API 결과. 실패 시 NULL. 재시도 없음.';
-COMMENT ON COLUMN photos.vision_tags     IS 'Schema: { time_of_day?: morning|afternoon|night, environment?: indoor|outdoor|urban|nature }';
+COMMENT ON COLUMN photos.vision_tags     IS 'Schema(v2.4): { category?: food|scenery|accommodation|activity|people|other }';
 COMMENT ON COLUMN photos.metadata        IS 'Rule 1: 테마별 부가정보. DDL 변경 금지. 예: { rating, caption, restaurant_name }';
 
 
