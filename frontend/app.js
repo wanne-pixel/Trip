@@ -154,6 +154,21 @@ const THEME_CONFIG = {
 
 const MAX_FILE_SIZE_MB = 20;
 
+/* ── v2.16 자동 재시도 로직 ── */
+async function executeWithRetry(fn, maxRetries = 2) {
+  let attempt = 0;
+  while (attempt <= maxRetries) {
+    try {
+      return await fn();
+    } catch (err) {
+      attempt++;
+      if (attempt > maxRetries) throw err;
+      console.warn(`[Retry] ${attempt}/${maxRetries} 재시도 중...`, err);
+      await new Promise(r => setTimeout(r, 2000));
+    }
+  }
+}
+
 function showToast(msg, isError = false) {
   let toast = document.getElementById('globalToast');
   if (!toast) {
@@ -1108,6 +1123,7 @@ async function handleFilesSelected(files) {
     let photos = [];
     let uploadedCount = 0;
     const totalCount = files.length;
+    let hasError = false;
     
     for (let i = 0; i < totalCount; i += 10) {
       const chunkCompressed = compressedFiles.slice(i, i + 10);
@@ -1115,35 +1131,49 @@ async function handleFilesSelected(files) {
       
       showLoadingOverlay(`사진을 서버에 전송 중입니다...\n(업로드 완료: ${uploadedCount} / ${totalCount})`);
       
-      if (i === 0) {
-        const result = await createTripFromPhotos(chunkCompressed, chunkOriginal);
-        trip = result.trip;
-        photos.push(...(result.photos || []));
-        
-        // state 업데이트
-        state.trips.unshift(trip);
-        state.tripPhotos[trip.id] = photos;
-      } else {
-        const newPhotos = await addPhotosToTrip(trip.id, chunkCompressed, chunkOriginal);
-        photos.push(...newPhotos);
-        state.tripPhotos[trip.id] = photos;
+      try {
+        if (i === 0) {
+          const result = await executeWithRetry(() => createTripFromPhotos(chunkCompressed, chunkOriginal));
+          trip = result.trip;
+          photos.push(...(result.photos || []));
+          
+          // state 업데이트
+          state.trips.unshift(trip);
+          state.tripPhotos[trip.id] = photos;
+        } else {
+          const newPhotos = await executeWithRetry(() => addPhotosToTrip(trip.id, chunkCompressed, chunkOriginal));
+          photos.push(...newPhotos);
+          state.tripPhotos[trip.id] = photos;
+        }
+        uploadedCount += chunkCompressed.length;
+      } catch (chunkErr) {
+        console.error(`[업로드 청크 실패] ${i} ~ ${i + 10}번째 사진:`, chunkErr);
+        hasError = true;
+        break; // 루프 중단, 하지만 성공한 곳까지만 반영
       }
-      
-      uploadedCount += chunkCompressed.length;
     }
 
     hideLoadingOverlay();
-    showToast(`✅ "${trip.title}" 여행이 자동 생성되었습니다!`);
 
-    // 앱 다시 렌더링 후 해당 여행 페이지로 이동
-    renderApp();
-    // 렌더링 완료 후 flip (DOM 갱신 필요)
-    requestAnimationFrame(() => flipToPage(trip.id));
+    if (trip) { 
+      // 여행이 생성되었다면 (즉 i=0 청크는 성공)
+      if (hasError) {
+        showToast(`❌ 네트워크 오류로 업로드가 중단되었습니다.\n(총 ${totalCount}장 중 ${uploadedCount}장 완료)`, true);
+      } else {
+        showToast(`✅ "${trip.title}" 여행이 자동 생성되었습니다!`);
+      }
+      // 성공한 부분까지 앱 다시 렌더링 후 이동
+      renderApp();
+      requestAnimationFrame(() => flipToPage(trip.id));
+    } else {
+      // 아예 처음부터 실패
+      showToast(`❌ 여행 생성 실패: 네트워크 오류로 업로드를 시작하지 못했습니다.`, true);
+    }
 
   } catch (err) {
-    console.error('[from-photos 실패]', err);
+    console.error('[from-photos 시스템 에러]', err);
     hideLoadingOverlay();
-    showToast(`❌ 여행 생성 실패: ${err.message}`, true);
+    showToast(`❌ 시스템 오류: ${err.message}`, true);
   }
 
   // input 초기화
@@ -1203,6 +1233,7 @@ async function handleAddPhotos(e) {
     const totalCount = files.length;
     let uploadedCount = 0;
     const allNewPhotos = [];
+    let hasError = false;
     
     for (let i = 0; i < totalCount; i += 10) {
       const chunkCompressed = compressedFiles.slice(i, i + 10);
@@ -1210,21 +1241,34 @@ async function handleAddPhotos(e) {
       
       showLoadingOverlay(`사진을 서버에 전송 중입니다...\n(업로드 완료: ${uploadedCount} / ${totalCount})`);
       
-      const newPhotos = await addPhotosToTrip(tripId, chunkCompressed, chunkOriginal);
-      allNewPhotos.push(...newPhotos);
-      uploadedCount += chunkCompressed.length;
+      try {
+        const newPhotos = await executeWithRetry(() => addPhotosToTrip(tripId, chunkCompressed, chunkOriginal));
+        allNewPhotos.push(...newPhotos);
+        uploadedCount += chunkCompressed.length;
+      } catch (chunkErr) {
+        console.error(`[추가 업로드 청크 실패] ${i} ~ ${i + 10}번째 사진:`, chunkErr);
+        hasError = true;
+        break; // 루프 중단
+      }
     }
     
-    if (!state.tripPhotos[tripId]) state.tripPhotos[tripId] = [];
-    state.tripPhotos[tripId].push(...allNewPhotos);
-    refreshPhotoSection(tripId);
+    if (allNewPhotos.length > 0) {
+      if (!state.tripPhotos[tripId]) state.tripPhotos[tripId] = [];
+      state.tripPhotos[tripId].push(...allNewPhotos);
+      refreshPhotoSection(tripId);
+    }
     
     hideLoadingOverlay();
-    showToast(`✅ ${allNewPhotos.length}장의 사진이 추가되었습니다!`);
+
+    if (hasError) {
+      showToast(`❌ 업로드 중단 (총 ${totalCount}장 중 ${uploadedCount}장 추가됨)`, true);
+    } else {
+      showToast(`✅ ${allNewPhotos.length}장의 사진이 추가되었습니다!`);
+    }
   } catch (err) {
-    console.error('[addPhotosToTrip 실패]', err);
+    console.error('[addPhotosToTrip 시스템 에러]', err);
     hideLoadingOverlay();
-    showToast(`❌ 사진 추가 실패: ${err.message}`, true);
+    showToast(`❌ 사진 추가 중 예상치 못한 오류 발생`, true);
   }
   input.value = '';
 }
