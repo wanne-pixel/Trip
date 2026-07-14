@@ -437,7 +437,7 @@ tripsRouter.post(
       // ── Step 1: 각 사진 EXIF + Vision 병렬 추출 ──
       // Promise.allSettled: 일부 실패해도 전체 중단 없음 (Rule 2)
       const metaResults: PromiseSettledResult<{file: Express.Multer.File; exif: ExifResult; vision: VisionTags | null}>[] = [];
-      const CONCURRENCY_LIMIT = 5;
+      const CONCURRENCY_LIMIT = 3;
       for (let i = 0; i < files.length; i += CONCURRENCY_LIMIT) {
         const chunk = files.slice(i, i + CONCURRENCY_LIMIT);
         const chunkResults = await Promise.allSettled(
@@ -517,7 +517,7 @@ tripsRouter.post(
       // ── Step 5: 사진 Storage 업로드 + photos 테이블 일괄 INSERT ──
       // Promise.allSettled: 일부 사진 업로드 실패해도 전체 여행 생성 중단 없음 (Rule 2)
       const photoResults: PromiseSettledResult<Photo>[] = [];
-      const UPLOAD_CONCURRENCY_LIMIT = 5;
+      const UPLOAD_CONCURRENCY_LIMIT = 3;
       for (let i = 0; i < processedFiles.length; i += UPLOAD_CONCURRENCY_LIMIT) {
         const chunk = processedFiles.slice(i, i + UPLOAD_CONCURRENCY_LIMIT);
         const chunkResults = await Promise.allSettled(
@@ -685,7 +685,7 @@ tripsRouter.post(
       // ── Step 1: 각 사진 EXIF + Vision 병렬 처리 ──
       // Promise.allSettled: 일부 실패해도 전체 중단 없음 (Rule 2)
       const metaResults: PromiseSettledResult<{file: Express.Multer.File; exif: ExifResult; vision: VisionTags | null}>[] = [];
-      const CONCURRENCY_LIMIT = 5;
+      const CONCURRENCY_LIMIT = 3;
       for (let i = 0; i < files.length; i += CONCURRENCY_LIMIT) {
         const chunk = files.slice(i, i + CONCURRENCY_LIMIT);
         const chunkResults = await Promise.allSettled(
@@ -720,7 +720,7 @@ tripsRouter.post(
       // ── Step 2: Storage 업로드 + photos 테이블 INSERT ──
       // Promise.allSettled: 일부 실패해도 다른 사진 계속 저장 (Rule 2)
       const photoResults: PromiseSettledResult<Photo>[] = [];
-      const UPLOAD_CONCURRENCY_LIMIT = 5;
+      const UPLOAD_CONCURRENCY_LIMIT = 3;
       for (let i = 0; i < processedFiles.length; i += UPLOAD_CONCURRENCY_LIMIT) {
         const chunk = processedFiles.slice(i, i + UPLOAD_CONCURRENCY_LIMIT);
         const chunkResults = await Promise.allSettled(

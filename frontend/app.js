@@ -41,14 +41,24 @@ async function createTripFromPhotos(compressedFiles, originalFiles) {
       formData.append('exif_chunks', originalFiles[i].slice(0, 128 * 1024), originalFiles[i].name);
     }
   }
-  const res = await fetch(`${API_BASE_URL}/trips/from-photos`, {
-    method: 'POST',
-    body: formData,
-  });
-  if (!res.ok) throw new Error(`여행 생성 오류: ${res.status}`);
-  const json = await res.json();
-  if (!json.success) throw new Error(json.error || '여행을 생성하지 못했습니다.');
-  return json.data; // { trip, photos, summary }
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 180000); // 3분 타임아웃
+  try {
+    const res = await fetch(`${API_BASE_URL}/trips/from-photos`, {
+      method: 'POST',
+      body: formData,
+      signal: controller.signal,
+    });
+    clearTimeout(timeoutId);
+    if (!res.ok) throw new Error(`여행 생성 오류: ${res.status}`);
+    const json = await res.json();
+    if (!json.success) throw new Error(json.error || '여행을 생성하지 못했습니다.');
+    return json.data; // { trip, photos, summary }
+  } catch (err) {
+    clearTimeout(timeoutId);
+    if (err.name === 'AbortError') throw new Error('서버 응답 시간 초과 (3분)');
+    throw err;
+  }
 }
 
 /** PATCH /api/trips/:id → 필드 수정 (title, description 등) */
@@ -95,14 +105,25 @@ async function addPhotosToTrip(tripId, compressedFiles, originalFiles) {
       formData.append('exif_chunks', originalFiles[i].slice(0, 128 * 1024), originalFiles[i].name);
     }
   }
-  const res = await fetch(`${API_BASE_URL}/trips/${tripId}/photos`, {
-    method: 'POST',
-    body: formData,
-  });
-  if (!res.ok) throw new Error(`사진 추가 오류: ${res.status}`);
-  const json = await res.json();
-  if (!json.success) throw new Error(json.error || '사진을 추가하지 못했습니다.');
-  return json.data;
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 180000); // 3분 타임아웃
+  try {
+    const res = await fetch(`${API_BASE_URL}/trips/${tripId}/photos`, {
+      method: 'POST',
+      body: formData,
+      signal: controller.signal,
+    });
+    clearTimeout(timeoutId);
+    if (!res.ok) throw new Error(`사진 추가 오류: ${res.status}`);
+    const json = await res.json();
+    if (!json.success) throw new Error(json.error || '사진을 추가하지 못했습니다.');
+    // 서버 응답: { trip_id, photos: [...], summary: {...} }
+    return json.data?.photos || json.data;
+  } catch (err) {
+    clearTimeout(timeoutId);
+    if (err.name === 'AbortError') throw new Error('서버 응답 시간 초과 (3분)');
+    throw err;
+  }
 }
 
 /** DELETE /api/photos/:id → 사진 삭제 */
@@ -1125,9 +1146,9 @@ async function handleFilesSelected(files) {
     const totalCount = files.length;
     let hasError = false;
     
-    for (let i = 0; i < totalCount; i += 10) {
-      const chunkCompressed = compressedFiles.slice(i, i + 10);
-      const chunkOriginal = files.slice(i, i + 10);
+    for (let i = 0; i < totalCount; i += 5) {
+      const chunkCompressed = compressedFiles.slice(i, i + 5);
+      const chunkOriginal = files.slice(i, i + 5);
       
       showLoadingOverlay(`사진을 서버에 전송 중입니다...\n(업로드 완료: ${uploadedCount} / ${totalCount})`);
       
@@ -1235,9 +1256,9 @@ async function handleAddPhotos(e) {
     const allNewPhotos = [];
     let hasError = false;
     
-    for (let i = 0; i < totalCount; i += 10) {
-      const chunkCompressed = compressedFiles.slice(i, i + 10);
-      const chunkOriginal = files.slice(i, i + 10);
+    for (let i = 0; i < totalCount; i += 5) {
+      const chunkCompressed = compressedFiles.slice(i, i + 5);
+      const chunkOriginal = files.slice(i, i + 5);
       
       showLoadingOverlay(`사진을 서버에 전송 중입니다...\n(업로드 완료: ${uploadedCount} / ${totalCount})`);
       

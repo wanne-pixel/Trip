@@ -84,7 +84,7 @@ app.use((err: Error, _req: Request, res: Response, _next: NextFunction) => {
 // ─────────────────────────────────────────────
 // 서버 시작
 // ─────────────────────────────────────────────
-app.listen(PORT, () => {
+const server = app.listen(PORT, () => {
   console.log(`🚀 Trip Backend Server 실행 중: http://localhost:${PORT}`);
   console.log(`📋 API 엔드포인트:`);
   console.log(`   GET    /health`);
@@ -101,7 +101,8 @@ app.listen(PORT, () => {
   console.log(`   GET    /api/photos?trip_id=...    ← v2.0: taken_at ASC, NULL LAST 정렬`);
 });
 
-
-
+// v2.16: 대용량 업로드를 위한 서버 타임아웃 확장 (5분)
+server.timeout = 300000; // 300초
+server.keepAliveTimeout = 120000; // 120초
 
 export default app;
