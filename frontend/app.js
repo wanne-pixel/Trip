@@ -941,6 +941,18 @@ function renderTripPage(trip, indexNumber) {
 
 function renderApp() {
   const root = document.getElementById('app');
+
+  // v4.0: 편집 액션 후 스크롤 위치가 맨 위로 올라가는 문제 방지
+  // renderApp() 호출 전에 현재 보이는 페이지들의 스크롤 위치를 저장
+  const scrollPositions = {};
+  document.querySelectorAll('.page').forEach(page => {
+    const pageId = page.dataset.page || page.id?.replace('page-', '');
+    const content = page.querySelector('.page-content');
+    if (pageId && content && content.scrollTop > 0) {
+      scrollPositions[pageId] = content.scrollTop;
+    }
+  });
+
   const pageOrder = ['cover', 'index', ...state.trips.map(t => t.id)];
   let pagesHTML = '';
 
@@ -981,6 +993,17 @@ function renderApp() {
 
   updatePageFlips();
   attachEventListeners();
+
+  // v4.0: 스크롤 위치 복원
+  requestAnimationFrame(() => {
+    document.querySelectorAll('.page').forEach(page => {
+      const pageId = page.dataset.page || page.id?.replace('page-', '');
+      const content = page.querySelector('.page-content');
+      if (pageId && content && scrollPositions[pageId]) {
+        content.scrollTop = scrollPositions[pageId];
+      }
+    });
+  });
 }
 
 /* ──────────────────────────────────────────────────────────
@@ -1964,6 +1987,26 @@ async function init() {
   }
   renderApp();
   loadTocExtras(); // v3.9: 통계·추억은 비동기 로드 (실패해도 앱 동작에 영향 없음)
+
+  // v4.0: 기존 여행들의 기간(description) 일괄 재계산 (백그라운드, 실패 무시)
+  recalculateExistingTripDates();
+}
+
+async function recalculateExistingTripDates() {
+  try {
+    const res = await fetch(`${API_BASE_URL}/trips/recalculate-dates`, { method: 'POST' });
+    const json = await res.json();
+    if (json.success && json.data?.updated > 0) {
+      // 재계산 완료 → 여행 목록 다시 불러와서 description 갱신
+      const freshTrips = await fetchTrips();
+      state.trips = freshTrips;
+      if (!state.isEditMode) renderApp();
+      console.log(`[recalculate-dates] ${json.data.updated}개 여행 기간 재계산 완료`);
+    }
+  } catch (e) {
+    // Rule 2: 실패해도 앱 동작에 영향 없음
+    console.warn('[recalculate-dates] 재계산 실패 (무시):', e);
+  }
 }
 
 /* v3.9: 통계 대시보드 + "1년 전 오늘" 데이터 병렬 로드 (Rule 2: 실패 시 조용히 무시) */

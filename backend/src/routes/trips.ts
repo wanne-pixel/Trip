@@ -189,6 +189,39 @@ tripsRouter.get('/', async (_req: Request, res: Response) => {
 });
 
 // ─────────────────────────────────────────────
+// POST /api/trips/recalculate-dates — 기존 모든 여행의 기간(description) 일괄 재계산
+// 각 여행의 사진들의 taken_at_local(또는 taken_at)을 기반으로 정확한 기간을 다시 계산
+// ─────────────────────────────────────────────
+tripsRouter.post('/recalculate-dates', async (_req: Request, res: Response) => {
+  try {
+    const { data: trips, error: tripsError } = await supabase
+      .from('trips')
+      .select('id, description, metadata');
+
+    if (tripsError || !trips) {
+      return res.json({ success: false, error: tripsError?.message || '여행 목록 조회 실패' });
+    }
+
+    let updatedCount = 0;
+    for (const trip of trips) {
+      try {
+        await updateTripDateRange(trip.id);
+        updatedCount++;
+      } catch (e) {
+        console.warn(`[recalculate-dates] trip ${trip.id} 실패:`, (e as Error).message);
+      }
+    }
+
+    return res.json({
+      success: true,
+      data: { total: trips.length, updated: updatedCount }
+    });
+  } catch (err) {
+    return res.json({ success: false, error: (err as Error).message });
+  }
+});
+
+// ─────────────────────────────────────────────
 // GET /api/trips/:id — 특정 여행 조회
 // ─────────────────────────────────────────────
 tripsRouter.get('/:id', async (req: Request<{ id: string }>, res: Response) => {
